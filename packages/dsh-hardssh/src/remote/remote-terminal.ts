@@ -34,11 +34,14 @@ export class SshTerminalHandle implements SubprocessTerminalHandle {
   private exitResolve!: (outcome: SubprocessOutcome) => void
   topLevelExited = false
   private cleanup: Promise<void> | undefined
+  /** Advances on input, resize and exit — the facts a raw SSH PTY can observe. */
+  private activityRevision = 0
 
   constructor(
     private readonly closeChannel: () => void,
     private readonly sendChannel: (data: string) => void,
     private readonly signalChannel: (name: string) => void,
+    private readonly resizeChannel: (cols: number, rows: number) => void,
     private readonly graceMs: number,
   ) {
     this.done = new Promise<SubprocessOutcome>((resolve) => { this.exitResolve = resolve })
@@ -46,6 +49,7 @@ export class SshTerminalHandle implements SubprocessTerminalHandle {
 
   /** Settle the exit promise (called by the runtime when the channel closes). */
   resolveExit(outcome: SubprocessOutcome): void {
+    this.activityRevision += 1
     this.exitResolve(outcome)
   }
 
@@ -55,11 +59,46 @@ export class SshTerminalHandle implements SubprocessTerminalHandle {
     return new Promise<void>((resolve, reject) => {
       try {
         this.sendChannel(data)
+        this.activityRevision += 1
         resolve()
       } catch (error) {
         reject(error instanceof Error ? error : new Error(String(error)))
       }
     })
+  }
+
+  /**
+   * @inheritdoc
+   *
+   * DSH 0.2.0 added this member to the terminal seam; without it the sidebar
+   * terminal failed at its first attach with
+   * `终端错误：this.handle.resize is not a function` (the controller's
+   * `BrowserTerminal` resizes the PTY through the handle).
+   */
+  resize(cols: number, rows: number): Promise<void> {
+    if (this.topLevelExited) return Promise.reject(new Error('terminal process has exited'))
+    return new Promise<void>((resolve, reject) => {
+      try {
+        this.resizeChannel(cols, rows)
+        this.activityRevision += 1
+        resolve()
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
+    })
+  }
+
+  /**
+   * @inheritdoc
+   *
+   * A raw SSH PTY exposes no shell-prompt or job evidence, and the seam's own
+   * contract allows an unsupported observation to report `unknown`. Inventing
+   * `idle` here would tell the controller that a command finished when nothing
+   * was observed, so the state stays `unknown` while the revision still tracks
+   * the input/resize/exit facts this handle does have.
+   */
+  inspectActivity(): Promise<{ state: 'idle' | 'busy' | 'unknown'; revision: number }> {
+    return Promise.resolve({ state: 'unknown', revision: this.activityRevision })
   }
 
   /** The SSH channel does not expose a foreground process group. */
@@ -146,6 +185,7 @@ export async function spawnSshTerminal(
       () => session.close(),
       (data) => session.send(data),
       (name) => session.signal(name),
+      (cols, rows) => session.resize(cols, rows),
       spec.graceMs,
     )
     // Resolves on the login shell's first output (banner/prompt) or the bound:

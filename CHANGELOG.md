@@ -37,6 +37,13 @@
 - 修法（复用既有机制，不引入缓存 / 新配置 / 失败开放）：新增 `readAccess(signal)` = `{ retryPolicy: 'idempotent', attempts: 2 }`，接到五个**纯读**路径上——`canonicalPath`、`realpaths`、`ls`、`stat`、`lstat`。`attempts: 2` 把交互式读限制为一次重放（而不是三个完整预算）。**写入类一律不动**（`upload`/`download`/`write`/`delete`/`rm`/`rename` 保持单次尝试）：重放一个已被服务端观察到的写 / 改名 / 删除可能造成重复操作——这正是 `withClient` 默认 `connect-only` 的理由。
 - 测试 +4（`tests/ssh/sftp-read-replay.test.ts`）：五个读路径都请求可重放访问（且恰好一次重放）、写入类保持单次尝试；并端到端证明「首个通道卡死 → 超时 → 在新通道上重放 → `canonicalPath` 成功返回」，以及写入在同样情形下仍然报超时（不被重放）。
 
+### 修复：终端 handle 缺少 0.2.0 新增的 resize / inspectActivity
+
+- 真机现象：打开侧边栏终端即报 `终端错误：this.handle.resize is not a function`。
+- 归属：**本插件的问题**（不是 DSH 自带终端组件的问题）。0.2.0 给 `SubprocessTerminalHandle` 加了成员，其中 `resize(cols, rows)` 被控制器在**每次附加终端时**调用（`BrowserTerminal` 里 `await this.handle.resize(cols, rows)`），`inspectActivity()` 也被保留观察器在**每个终端**上调用（`new TerminalRetention(policy, () => this.handle.inspectActivity(), …)`）。官方本地 provider 两个都实现了，而我们的 `SshTerminalHandle` 写在 0.1.x 线上（那时两者都不存在），于是绑定会话的远端终端一附加就抛。
+- 修法：`SshTerminalHandle` 补上 `resize`（转发到引擎既有的 `ShellSession.resize` → `stream.setWindow`；已退出时拒绝，与官方本地 provider 一致；通道异常照常抛出而不是吞掉）与 `inspectActivity`。后者**恒报 `unknown` 而不是 `idle`**——裸 SSH PTY 没有任何提示符/作业证据，而 seam 契约明确允许"无法观察时报 unknown"；谎报 `idle` 会让控制器以为命令已结束。`revision` 仍在输入、resize、退出时递增，如实反映该 handle 确实能观察到的事实。
+- 测试 +6（`tests/remote/remote-terminal-handle.test.ts`）：resize 转发尺寸、退出后拒绝、通道异常不吞、activity 恒为 unknown 且 revision 随输入/resize/退出递增、inspectForeground 仍为 undefined。
+
 ### 内部清理
 
 - 抽出 `src/utf8.ts`：两份有界输出收集器（引擎 exec 捕获的**头部**截断、远端子进程投影的**尾部**滑动窗口）共用同一份 UTF-8 序列边界算法；顺带修掉尾部窗口在字节预算边界裁剪时会切出半个字符（窗口开头解码成 U+FFFD）的隐患——只在「本次 push 确实丢弃了头部字节」时对齐，避免误伤跨 chunk 的合法字符。
@@ -44,7 +51,7 @@
 
 ### 测试
 
-新增 45 条：客户端会话推导 8 条（0.1.x 形状 / 0.2.0 形状 / 无会话 / `ids` 顺序 / `ids` 外行 / 忽略其它来源 / 缺 `byId` / 形状守卫正反例）、工作区注册表适配 4 条、UTF-8 边界与尾部窗口 9 条、终端环境探针 12 条（本地推导与空串处理 / abort、委托与回退、门面委托与回退、远端 posix+`SHELL` / 读取失败降级 / 无 alias 不探测）、终端路由 6 条（绑定会话换世界 shell 并翻译 cwd、世界读不到 shell 时退回 `/bin/sh`、世界能跑的 shell 名不替换、本机会话原样、预中止不探测、以及 `spawn()` 保持客户端二进制规则的回归护栏）、设置服务代际匹配 2 条（两代都算可用 / 真正缺失时报最接近的一代）、SFTP 读重放 4 条。全量 **72 个测试文件 / 675 通过 / 4 跳过**。
+新增 51 条：客户端会话推导 8 条（0.1.x 形状 / 0.2.0 形状 / 无会话 / `ids` 顺序 / `ids` 外行 / 忽略其它来源 / 缺 `byId` / 形状守卫正反例）、工作区注册表适配 4 条、UTF-8 边界与尾部窗口 9 条、终端环境探针 12 条（本地推导与空串处理 / abort、委托与回退、门面委托与回退、远端 posix+`SHELL` / 读取失败降级 / 无 alias 不探测）、终端路由 6 条（绑定会话换世界 shell 并翻译 cwd、世界读不到 shell 时退回 `/bin/sh`、世界能跑的 shell 名不替换、本机会话原样、预中止不探测、以及 `spawn()` 保持客户端二进制规则的回归护栏）、设置服务代际匹配 2 条（两代都算可用 / 真正缺失时报最接近的一代）、SFTP 读重放 4 条、终端 handle 新成员 6 条（resize 转发/退出后拒绝/异常不吞/activity 恒 unknown 且 revision 递增/inspectForeground 仍 undefined）。全量 **73 个测试文件 / 681 通过 / 4 跳过**。
 
 ## v0.2.6-alpha — 2026-09-17
 
