@@ -28,6 +28,15 @@
 - 0.2.0 把 `ctx.settings` 换成了 **`SettingsForms`**（`configure` / `describe` / `update`，按每个插件自己的 `Config` schema 自动生成设置页），旧的 `installSection(owner, ns, schema, entry, hooks)` 不复存在。我们的「可选服务」探测只认旧方法名，于是在 0.2.0 上把 `settings` 报成 `available: false, missingMethods: ["installSection"]` —— 这是**误报**：配置界面其实照常工作（本插件本来就导出 `Config` schema，0.2.0 会据此自动生成那一页），而健康横幅却宣称该能力消失了。
   现在探测按「代际」匹配：每个可选服务列出多套可接受的方法面，任一套完整即算可用；都缺时报告**最接近**的那一代（已具备成员更多者优先，其次缺失更少），避免把 0.2.0 的服务描述成「缺 `installSection`」。0.1.x 的 `installSection` 路径与行为完全不变。
 
+### 修复：SFTP 通道卡死不再让整个回合失败
+
+- 真机现象：SSH 工作区里的一次运行直接失败
+  `本轮运行失败 cannot resolve "/yutiancheng/2026/regvelo/.git": Error: remote realpath timed out after 15000ms`。
+  只读探测那台 GPFS 主机后确认**文件系统并不慢**：同一个（并不存在的）路径经 shell 查询只需 **~5ms**，`realpath` 与负查询都是毫秒级、无 automount。所以 15s 预算是被**卡住的 SFTP 通道**烧掉的（请求发出去没有响应），属于典型的瞬时故障。
+- 而连接池其实**已经**具备自愈的两半：任何非 abort 失败都会 `lease.markBroken()` 退役整条传输（`withClient` 的失败分支），`withSftpTimeout` 还会额外退役共享通道；缺的只是**允许读操作在新连接上重放一次**——SFTP 读路径用的是默认 `connect-only` 策略，于是超时直接抛出，把瞬时故障升级成「整轮失败」。
+- 修法（复用既有机制，不引入缓存 / 新配置 / 失败开放）：新增 `readAccess(signal)` = `{ retryPolicy: 'idempotent', attempts: 2 }`，接到五个**纯读**路径上——`canonicalPath`、`realpaths`、`ls`、`stat`、`lstat`。`attempts: 2` 把交互式读限制为一次重放（而不是三个完整预算）。**写入类一律不动**（`upload`/`download`/`write`/`delete`/`rm`/`rename` 保持单次尝试）：重放一个已被服务端观察到的写 / 改名 / 删除可能造成重复操作——这正是 `withClient` 默认 `connect-only` 的理由。
+- 测试 +4（`tests/ssh/sftp-read-replay.test.ts`）：五个读路径都请求可重放访问（且恰好一次重放）、写入类保持单次尝试；并端到端证明「首个通道卡死 → 超时 → 在新通道上重放 → `canonicalPath` 成功返回」，以及写入在同样情形下仍然报超时（不被重放）。
+
 ### 内部清理
 
 - 抽出 `src/utf8.ts`：两份有界输出收集器（引擎 exec 捕获的**头部**截断、远端子进程投影的**尾部**滑动窗口）共用同一份 UTF-8 序列边界算法；顺带修掉尾部窗口在字节预算边界裁剪时会切出半个字符（窗口开头解码成 U+FFFD）的隐患——只在「本次 push 确实丢弃了头部字节」时对齐，避免误伤跨 chunk 的合法字符。
@@ -35,7 +44,7 @@
 
 ### 测试
 
-新增 39 条：客户端会话推导 8 条（0.1.x 形状 / 0.2.0 形状 / 无会话 / `ids` 顺序 / `ids` 外行 / 忽略其它来源 / 缺 `byId` / 形状守卫正反例）、工作区注册表适配 4 条、UTF-8 边界与尾部窗口 9 条、终端环境探针 12 条（本地推导与空串处理 / abort、委托与回退、门面委托与回退、远端 posix+`SHELL` / 读取失败降级 / 无 alias 不探测）、终端路由 6 条（绑定会话换世界 shell 并翻译 cwd、世界读不到 shell 时退回 `/bin/sh`、世界能跑的 shell 名不替换、本机会话原样、预中止不探测、以及 `spawn()` 保持客户端二进制规则的回归护栏）。全量 **71 个测试文件 / 669 通过 / 4 跳过**。
+新增 45 条：客户端会话推导 8 条（0.1.x 形状 / 0.2.0 形状 / 无会话 / `ids` 顺序 / `ids` 外行 / 忽略其它来源 / 缺 `byId` / 形状守卫正反例）、工作区注册表适配 4 条、UTF-8 边界与尾部窗口 9 条、终端环境探针 12 条（本地推导与空串处理 / abort、委托与回退、门面委托与回退、远端 posix+`SHELL` / 读取失败降级 / 无 alias 不探测）、终端路由 6 条（绑定会话换世界 shell 并翻译 cwd、世界读不到 shell 时退回 `/bin/sh`、世界能跑的 shell 名不替换、本机会话原样、预中止不探测、以及 `spawn()` 保持客户端二进制规则的回归护栏）、设置服务代际匹配 2 条（两代都算可用 / 真正缺失时报最接近的一代）、SFTP 读重放 4 条。全量 **72 个测试文件 / 675 通过 / 4 跳过**。
 
 ## v0.2.6-alpha — 2026-09-17
 

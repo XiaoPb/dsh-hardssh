@@ -20,6 +20,31 @@ export interface SftpClientOptions {
 }
 
 /**
+ * Access options for a REPLAYABLE SFTP read.
+ *
+ * A stalled transport is already retired by `withClient` itself (any non-abort
+ * failure calls `lease.markBroken`), and `withSftpTimeout` retires the shared
+ * channel on top of that — so the only thing missing for a hung READ is
+ * permission to run it again on the fresh connection. Without it the caller
+ * simply sees the timeout, and for the harness's path resolution that means the
+ * whole agent turn dies:
+ *
+ *   cannot resolve "/…/.git": remote realpath timed out after 15000ms
+ *
+ * Measured on the failing GPFS host: the very same (non-existent) path answers
+ * in ~5ms through the shell, so the budget was burned by a stalled channel, not
+ * by a slow filesystem — exactly the transient failure one replay fixes.
+ *
+ * READS only. A replayed write/rename/delete may duplicate work the server
+ * already observed (the reason `withClient` defaults to `connect-only`), so
+ * those keep the default. `attempts: 2` bounds an interactive read to a single
+ * replay instead of three full budgets.
+ */
+function readAccess(signal?: AbortSignal): SftpClientOptions {
+  return { signal, retryPolicy: 'idempotent', attempts: 2 }
+}
+
+/**
  * Narrow connection dependency of the SFTP component: the pooled lease
  * acquisition plus the engine's retry/replay policy. The component owns the
  * lease for the whole operation (including the lifetime of a returned read
@@ -175,7 +200,7 @@ async ls(alias: string, path: string, signal?: AbortSignal): Promise<import('../
       this.sftpOpts.sftpOperationTimeoutMs,
       `remote ls timed out after ${this.sftpOpts.sftpOperationTimeoutMs}ms: ${path}`,
     )
-  }, { signal })
+  }, readAccess(signal))
 }
 
 /**
@@ -203,7 +228,7 @@ async realpaths(alias: string, remotePaths: readonly string[], signal?: AbortSig
       for (let i = 0; i < batch.length; i += 1) results[start + i] = resolved[i]!
     }
     return results
-  }, { signal })
+  }, readAccess(signal))
 }
 
 /**
@@ -274,7 +299,7 @@ async canonicalPath(
       suffix = [posix.basename(cursor), ...suffix]
       cursor = parent
     }
-  }, { signal })
+  }, readAccess(signal))
 }
 
 /**
@@ -326,7 +351,7 @@ async stat(alias: string, remotePath: string, signal?: AbortSignal): Promise<{ t
       mtimeMs: attrs.mtime * 1000,
       mode: attrs.mode,
     }
-  }, { signal })
+  }, readAccess(signal))
 }
 
 /**
@@ -348,7 +373,7 @@ async lstat(alias: string, remotePath: string, signal?: AbortSignal): Promise<{ 
       if (isMissingSftpError(error)) return undefined
       throw error
     }
-  }, { signal })
+  }, readAccess(signal))
 }
 
 /**
