@@ -982,16 +982,31 @@ describe('key/agent auth config (buildConnectConfig)', () => {
     rmSync(dir2, { recursive: true, force: true })
   })
 
-  it('key host without a key path relies on the agent (no throw, zero input)', () => {
+  it('key host without a key path relies on the agent when no default key exists', () => {
     process.env.SSH_AUTH_SOCK = '/tmp/agent.sock'
-    const config = buildConnectConfig(entryWith({ kind: 'key' }), opts)
+    // The default-key probe is the test seam: this machine has ~/.ssh/id_rsa, and
+    // a default key now outranks the agent (OpenSSH order), so it must be
+    // suppressed for the agent-only branch to be observable.
+    const config = buildConnectConfig(entryWith({ kind: 'key' }), opts, undefined, { defaultKeyPath: () => undefined })
     expect(config.privateKey).toBeUndefined()
     expect(config.agent).toBe('/tmp/agent.sock')
+    expect(config.authHandler).toEqual(['agent'])
   })
 
   it('key host without a path and without an agent throws a precise error', () => {
     delete process.env.SSH_AUTH_SOCK
-    expect(() => buildConnectConfig(entryWith({ kind: 'key' }), opts)).toThrow(/private key not found/)
+    expect(() => buildConnectConfig(entryWith({ kind: 'key' }), opts, undefined, { defaultKeyPath: () => undefined }))
+      .toThrow(/private key not found/)
+  })
+
+  it('falls back to an OpenSSH default key before the agent', () => {
+    process.env.SSH_AUTH_SOCK = '/tmp/agent.sock'
+    const defaultKey = join(mkdtempSync(join(tmpdir(), 'dsh-default-key-')), 'id_ed25519')
+    writeFileSync(defaultKey, '-----BEGIN OPENSSH PRIVATE KEY-----\nfake\n-----END OPENSSH PRIVATE KEY-----\n')
+    const config = buildConnectConfig(entryWith({ kind: 'key' }), opts, undefined, { defaultKeyPath: () => defaultKey })
+    expect(config.privateKey).toContain('OPENSSH PRIVATE KEY')
+    // Key material outranks the agent; the agent stays as the next rung.
+    expect(config.authHandler).toEqual(['publickey', 'agent'])
   })
 })
 

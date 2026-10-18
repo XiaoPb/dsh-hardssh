@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { Client, type ConnectConfig } from 'ssh2'
 import { ConnectionPool, type SshConnectionService } from './pool.ts'
 import { holdLeaseUntilSettled, type ClientLease } from './lease.ts'
@@ -192,6 +194,34 @@ export const MAX_LEAKED_CHANNELS = 4
 export function sshAgentConfig(): string | undefined {
   const sock = process.env.SSH_AUTH_SOCK
   if (sock !== undefined && sock.trim() !== '') return sock
+  // Windows OpenSSH publishes its agent as a NAMED PIPE and never sets
+  // SSH_AUTH_SOCK, so a running agent was invisible here: every connection
+  // reported "no ssh-agent is available" while the agent sat right there.
+  // ssh2 accepts the pipe path as the agent address.
+  if (process.platform === 'win32') {
+    const pipe = '\\\\.\\pipe\\openssh-ssh-agent'
+    if (existsSync(pipe)) return pipe
+  }
+  return undefined
+}
+
+/** Default private keys OpenSSH tries, in its own preference order. */
+export const DEFAULT_PRIVATE_KEY_NAMES = ['id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa'] as const
+
+/**
+ * The first existing default private key in a directory, or undefined.
+ *
+ * A host whose configured key is missing/rejected is still reachable when one
+ * of these is accepted — this is the same "try the usual keys" behaviour
+ * OpenSSH and VS Code Remote-SSH have. An explicit `IdentityFile` always wins.
+ * @param sshDir - directory to inspect; defaults to the user's `~/.ssh`.
+ * @returns an absolute key path, or undefined when none of them exists.
+ */
+export function defaultPrivateKeyPath(sshDir = join(homedir(), '.ssh')): string | undefined {
+  for (const name of DEFAULT_PRIVATE_KEY_NAMES) {
+    const candidate = join(sshDir, name)
+    if (existsSync(candidate)) return candidate
+  }
   return undefined
 }
 
@@ -228,6 +258,8 @@ export function buildConnectConfig(
     setOutcome?: (value: HostKeyOutcome) => void
     /** Vault-resolved authentication (overrides entry.auth secrets). */
     authOverride?: ResolvedAuthDeps
+    /** Test seam: default-key lookup; production reads the user's ~/.ssh. */
+    defaultKeyPath?: () => string | undefined
   } = {},
 ): ConnectConfig {
   const config: ConnectConfig = {
@@ -255,22 +287,38 @@ export function buildConnectConfig(
     ?? { kind: entry.auth.kind, keyPath: entry.auth.keyPath, password: entry.auth.password, passphrase: entry.auth.passphrase }
   if (auth.kind === 'password') {
     config.password = auth.password
-  } else {
-    const keyPath = auth.keyPath === undefined ? undefined : expandHome(auth.keyPath)
-    if (keyPath !== undefined && keyPath !== '' && existsSync(keyPath)) {
-      config.privateKey = readFileSync(keyPath, 'utf8')
-      if (auth.passphrase !== undefined && auth.passphrase !== '') {
-        config.passphrase = auth.passphrase
-      }
-    } else if (agent === undefined) {
-      // No key file AND no agent to fall back on — fail before the
-      // handshake with a precise message instead of a generic auth failure.
+  }
+  // Key material: the configured key when it is present, else OpenSSH's default
+  // key. A host whose IdentityFile has not been delivered yet is therefore still
+  // reachable through the usual key, instead of failing before the handshake.
+  // The explicit passphrase belongs to the configured key only.
+  let keyPath = auth.kind === 'key' && auth.keyPath !== undefined ? expandHome(auth.keyPath) : undefined
+  let keyPassphrase = auth.kind === 'key' ? auth.passphrase : undefined
+  if (keyPath === undefined || keyPath === '' || !existsSync(keyPath)) {
+    keyPath = (buildContext.defaultKeyPath ?? defaultPrivateKeyPath)()
+    keyPassphrase = undefined
+  }
+  if (keyPath !== undefined) {
+    config.privateKey = readFileSync(keyPath, 'utf8')
+    if (keyPassphrase !== undefined && keyPassphrase !== '') config.passphrase = keyPassphrase
+  } else if (auth.kind === 'key' && agent === undefined) {
+    // No key file (configured or default) AND no agent to fall back on — fail
+    // before the handshake with a precise message instead of a generic auth
+    // failure. A password-kind host may legitimately have neither: the
+    // password gate in resolveEntryAuth decides whether that is a prompt.
+    if (config.password === undefined || config.password === '') {
       throw new Error(`private key not found: '${auth.keyPath ?? '(unset)'}' and no ssh-agent is available (set SSH_AUTH_SOCK, or configure a key path)`)
     }
-    // Else: the key path is unset or missing but an agent is available —
-    // leave privateKey unset so ssh2 authenticates from the agent's keys
-    // (zero input, the VSCode Remote-SSH way).
   }
+  // Authentication ORDER: keys first, then the agent, then the password.
+  // ssh2's own default is `password` BEFORE `publickey`/`agent` whenever both are
+  // configured, which is exactly the "still asks for a password although the key
+  // works" behaviour this mode removes.
+  const methods: Array<'publickey' | 'agent' | 'password'> = []
+  if (config.privateKey !== undefined) methods.push('publickey')
+  if (config.agent !== undefined) methods.push('agent')
+  if (config.password !== undefined) methods.push('password')
+  if (methods.length > 0) config.authHandler = methods
   return config
 }
 
@@ -807,12 +855,24 @@ export class ConnectionManager {
    * qualifies: a timeout or network reset must NOT discard a (possibly correct)
    * session credential.
    */
-  private async connectOrForgetRejectedSecret(alias: string, attempt: Promise<Client>): Promise<Client> {
+  private async connectOrForgetRejectedSecret(entry: SshHostEntry, usedPassword: boolean, attempt: Promise<Client>): Promise<Client> {
+    const alias = entry.alias
     try {
       return await attempt
     } catch (error) {
       if (this.sessionPasswords.has(alias) && isAuthDenied(error)) {
         this.forgetSessionPassword(alias)
+      }
+      // Keys and the agent were tried first (buildConnectConfig sets that order)
+      // and the server still refuses: a password host now really needs the
+      // prompt. Typed, so the GUI opens its credential dialog instead of showing
+      // a raw "All configured authentication methods failed".
+      //
+      // `usedPassword` is what the attempt ACTUALLY carried (vault/session
+      // resolved), not what the stored entry happens to contain: the inline
+      // password may be shadowed by an empty vault resolution.
+      if (isAuthDenied(error) && entry.auth.kind === 'password' && !usedPassword) {
+        throw new NeedsPasswordError(alias, 'password')
       }
       throw error
     }
@@ -855,8 +915,18 @@ export class ConnectionManager {
     // Credential gate: a password-kind host without a secret must surface
     // NEEDS_PASSWORD (GUI dialog), NOT a raw ssh2 auth failure; an encrypted
     // key whose passphrase is missing must surface NEEDS_PASSPHRASE.
+    //
+    // Keys and the agent are attempted BEFORE the password (buildConnectConfig
+    // sets that order), so a password-configured host that a key can reach must
+    // not prompt at all. The up-front prompt is therefore limited to hosts with
+    // NO key material and NO agent; a rejected key still produces the prompt from
+    // the auth-failure path.
     if (resolved?.kind === 'password' && (resolved.password === undefined || resolved.password === '')) {
-      throw new NeedsPasswordError(entry.alias, 'password')
+      const hasKeyMaterial = (resolved.keyPath !== undefined && resolved.keyPath !== '' && existsSync(expandHome(resolved.keyPath)))
+        || defaultPrivateKeyPath() !== undefined
+      if (!hasKeyMaterial && sshAgentConfig() === undefined) {
+        throw new NeedsPasswordError(entry.alias, 'password')
+      }
     }
     if (resolved?.kind === 'key' && resolved.passphrase === undefined && resolved.keyPath !== undefined) {
       const keyPath = expandHome(resolved.keyPath)
@@ -901,7 +971,8 @@ export class ConnectionManager {
       const hopOutcome: { outcome?: HostKeyOutcome | undefined } = {}
       const hopResolved = await this.resolveEntryAuth(hop)
       const hopClient = await this.connectOrForgetRejectedSecret(
-        hopAlias,
+        hop,
+        hopResolved?.kind === 'password' && hopResolved.password !== undefined && hopResolved.password !== '',
         connectClient(
           buildConnectConfig(hop, this.opts, sock, {
             hostKeyPolicy: this.hostKeyPolicy,
@@ -970,7 +1041,8 @@ export class ConnectionManager {
       // server key first, so a secret is never sent to an unverified host.
       const resolvedAuth = await this.resolveEntryAuth(entry)
       const client = await this.connectOrForgetRejectedSecret(
-        entry.alias,
+        entry,
+        resolvedAuth?.kind === 'password' && resolvedAuth.password !== undefined && resolvedAuth.password !== '',
         connectClient(
           buildConnectConfig(entry, this.opts, sock, {
             hostKeyPolicy: this.hostKeyPolicy,

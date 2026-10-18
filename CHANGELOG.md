@@ -44,6 +44,15 @@
 - 修法：`SshTerminalHandle` 补上 `resize`（转发到引擎既有的 `ShellSession.resize` → `stream.setWindow`；已退出时拒绝，与官方本地 provider 一致；通道异常照常抛出而不是吞掉）与 `inspectActivity`。后者**恒报 `unknown` 而不是 `idle`**——裸 SSH PTY 没有任何提示符/作业证据，而 seam 契约明确允许"无法观察时报 unknown"；谎报 `idle` 会让控制器以为命令已结束。`revision` 仍在输入、resize、退出时递增，如实反映该 handle 确实能观察到的事实。
 - 测试 +6（`tests/remote/remote-terminal-handle.test.ts`）：resize 转发尺寸、退出后拒绝、通道异常不吞、activity 恒为 unknown 且 revision 随输入/resize/退出递增、inspectForeground 仍为 undefined。
 
+### 新增：密钥优先认证（VS Code Remote-SSH 式）
+
+- **Windows OpenSSH agent**：Windows 的 agent 是命名管道（`\\.\pipe\openssh-ssh-agent`）且**不设置** `SSH_AUTH_SOCK`，此前即使 agent 在运行也一律报「no ssh-agent is available」。现在 `SSH_AUTH_SOCK` 优先，其次在 Windows 上探测该命名管道。
+- **默认私钥发现**：配置的 `IdentityFile` 存在时优先用它；否则按 OpenSSH 顺序尝试 `~/.ssh/id_ed25519` → `id_ecdsa` → `id_rsa` → `id_dsa`。因此「config 里写了 key 但文件还没到位」的主机也能用既有默认 key 连上，而不是在握手前直接失败。
+- **认证顺序**：ssh2 自己的默认顺序在同时配置密码与密钥时是 **password 先于 publickey/agent**——这正是「明明 key 能用却仍弹密码」的根源。现在通过 `authHandler` 固定为 **key → agent → password**。
+- **按需密码**：password 类型的主机不再在连接前无条件抛 `NEEDS_PASSWORD`；只要有 key/agent 可用就先尝试，确实被拒后才弹出密码框（类型化错误交给 GUI）。更正了一处判定：判断「本次尝试是否带了密码」用的是**实际解析出的凭据**（vault/会话），不是存储条目里的 inline 字段——后者可能被空的 vault 解析遮蔽。
+- **passphrase 归属**：显式密钥的 passphrase 只应用到它自己的 key；回退到默认 key 时不会被带过去。
+- 测试 +10：新增 `tests/ssh/connect-auth-order.test.ts`（默认 key 发现/顺序、key→agent→password、回退、passphrase 作用域、vault 覆盖），并把 `engine.test.ts` 的 agent/无 key 两个用例更新到新语义（默认 key 优先于 agent）。
+
 ### 内部清理
 
 - 抽出 `src/utf8.ts`：两份有界输出收集器（引擎 exec 捕获的**头部**截断、远端子进程投影的**尾部**滑动窗口）共用同一份 UTF-8 序列边界算法；顺带修掉尾部窗口在字节预算边界裁剪时会切出半个字符（窗口开头解码成 U+FFFD）的隐患——只在「本次 push 确实丢弃了头部字节」时对齐，避免误伤跨 chunk 的合法字符。
@@ -51,7 +60,7 @@
 
 ### 测试
 
-新增 51 条：客户端会话推导 8 条（0.1.x 形状 / 0.2.0 形状 / 无会话 / `ids` 顺序 / `ids` 外行 / 忽略其它来源 / 缺 `byId` / 形状守卫正反例）、工作区注册表适配 4 条、UTF-8 边界与尾部窗口 9 条、终端环境探针 12 条（本地推导与空串处理 / abort、委托与回退、门面委托与回退、远端 posix+`SHELL` / 读取失败降级 / 无 alias 不探测）、终端路由 6 条（绑定会话换世界 shell 并翻译 cwd、世界读不到 shell 时退回 `/bin/sh`、世界能跑的 shell 名不替换、本机会话原样、预中止不探测、以及 `spawn()` 保持客户端二进制规则的回归护栏）、设置服务代际匹配 2 条（两代都算可用 / 真正缺失时报最接近的一代）、SFTP 读重放 4 条、终端 handle 新成员 6 条（resize 转发/退出后拒绝/异常不吞/activity 恒 unknown 且 revision 递增/inspectForeground 仍 undefined）。全量 **73 个测试文件 / 681 通过 / 4 跳过**。
+新增 61 条：客户端会话推导 8 条（0.1.x 形状 / 0.2.0 形状 / 无会话 / `ids` 顺序 / `ids` 外行 / 忽略其它来源 / 缺 `byId` / 形状守卫正反例）、工作区注册表适配 4 条、UTF-8 边界与尾部窗口 9 条、终端环境探针 12 条（本地推导与空串处理 / abort、委托与回退、门面委托与回退、远端 posix+`SHELL` / 读取失败降级 / 无 alias 不探测）、终端路由 6 条（绑定会话换世界 shell 并翻译 cwd、世界读不到 shell 时退回 `/bin/sh`、世界能跑的 shell 名不替换、本机会话原样、预中止不探测、以及 `spawn()` 保持客户端二进制规则的回归护栏）、设置服务代际匹配 2 条（两代都算可用 / 真正缺失时报最接近的一代）、SFTP 读重放 4 条、终端 handle 新成员 6 条（resize 转发/退出后拒绝/异常不吞/activity 恒 unknown 且 revision 递增/inspectForeground 仍 undefined）。全量 **74 个测试文件 / 691 通过 / 4 跳过**。
 
 ## v0.2.6-alpha — 2026-09-17
 
