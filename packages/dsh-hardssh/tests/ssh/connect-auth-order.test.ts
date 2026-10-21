@@ -20,6 +20,7 @@ import {
   buildConnectConfig,
   DEFAULT_PRIVATE_KEY_NAMES,
   defaultPrivateKeyPath,
+  shouldForgetSessionSecret,
 } from '../../src/ssh/connection/manager.ts'
 import type { SshHostEntry } from '../../src/ssh/protocol.ts'
 
@@ -127,5 +128,32 @@ describe('buildConnectConfig authentication order', () => {
     expect(config.password).toBeUndefined()
     expect(config.privateKey).toContain('OPENSSH PRIVATE KEY')
     expect(config.authHandler).toEqual(['publickey'])
+  })
+})
+
+describe('shouldForgetSessionSecret (the "first password entry fails" race)', () => {
+  it('forgets the exact credential the attempt carried and the server rejected', () => {
+    expect(shouldForgetSessionSecret({ password: 'p1' }, { password: 'p1' }, true)).toBe(true)
+    expect(shouldForgetSessionSecret({ passphrase: 'k1' }, { passphrase: 'k1' }, true)).toBe(true)
+  })
+
+  it('never forgets when the failed attempt carried no session secret', () => {
+    // The regression: a key-only attempt (started before the prompt finished)
+    // was denied and erased the password the user had just stored, so the
+    // prompt's retry had nothing to use and asked again.
+    expect(shouldForgetSessionSecret(undefined, { password: 'p1' }, true)).toBe(false)
+    expect(shouldForgetSessionSecret({}, { password: 'p1' }, true)).toBe(false)
+    expect(shouldForgetSessionSecret({ password: '' }, { password: 'p1' }, true)).toBe(false)
+  })
+
+  it('keeps a credential stored while the handshake was in flight', () => {
+    expect(shouldForgetSessionSecret({ password: 'old' }, { password: 'new' }, true)).toBe(false)
+    expect(shouldForgetSessionSecret({ passphrase: 'old' }, { passphrase: 'new' }, true)).toBe(false)
+  })
+
+  it('only acts on authentication denials', () => {
+    expect(shouldForgetSessionSecret({ password: 'p1' }, { password: 'p1' }, false)).toBe(false)
+    // Nothing stored: nothing to forget.
+    expect(shouldForgetSessionSecret({ password: 'p1' }, undefined, true)).toBe(false)
   })
 })

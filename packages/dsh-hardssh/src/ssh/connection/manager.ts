@@ -424,6 +424,37 @@ export function isAuthDenied(error: unknown): boolean {
 }
 
 /**
+ * Whether an auth denial may drop the session credential stored for an alias.
+ *
+ * Only the EXACT credential the failed attempt carried qualifies:
+ *  - an attempt that carried NO secret (a key-only probe racing the prompt) must
+ *    not wipe one the user just stored, and
+ *  - a credential replaced while the handshake was in flight belongs to the
+ *    newer attempt.
+ *
+ * Dropping the wrong one is what made the FIRST password entry fail: a key-only
+ * attempt started before the prompt finished, its denial erased the freshly
+ * stored password, the prompt's retry found an empty table and re-prompted, and
+ * only the second entry stuck.
+ * @param attempted - the session secret this attempt actually carried.
+ * @param current - the session secret stored for the alias right now.
+ * @param authDenied - whether the failure was an authentication denial.
+ * @returns whether the stored secret should be forgotten.
+ */
+export function shouldForgetSessionSecret(
+  attempted: { password?: string; passphrase?: string } | undefined,
+  current: { password?: string; passphrase?: string } | undefined,
+  authDenied: boolean,
+): boolean {
+  if (!authDenied || attempted === undefined || current === undefined) return false
+  const hasValue = (value: string | undefined): boolean => value !== undefined && value !== ''
+  if (!hasValue(attempted.password) && !hasValue(attempted.passphrase)) return false
+  if (hasValue(attempted.password) && current.password !== attempted.password) return false
+  if (hasValue(attempted.passphrase) && current.passphrase !== attempted.passphrase) return false
+  return true
+}
+
+/**
  * Host-side hooks the connection manager needs but must not own. Injected by
  * the facade so every resource keeps exactly one dispose point and the manager
  * never imports the facade back (no cycle).
@@ -855,12 +886,16 @@ export class ConnectionManager {
    * qualifies: a timeout or network reset must NOT discard a (possibly correct)
    * session credential.
    */
-  private async connectOrForgetRejectedSecret(entry: SshHostEntry, usedPassword: boolean, attempt: Promise<Client>): Promise<Client> {
+  private async connectOrForgetRejectedSecret(
+    entry: SshHostEntry,
+    attempted: { password?: string; passphrase?: string } | undefined,
+    attempt: Promise<Client>,
+  ): Promise<Client> {
     const alias = entry.alias
     try {
       return await attempt
     } catch (error) {
-      if (this.sessionPasswords.has(alias) && isAuthDenied(error)) {
+      if (shouldForgetSessionSecret(attempted, this.sessionPasswords.get(alias), isAuthDenied(error))) {
         this.forgetSessionPassword(alias)
       }
       // Keys and the agent were tried first (buildConnectConfig sets that order)
@@ -868,10 +903,10 @@ export class ConnectionManager {
       // prompt. Typed, so the GUI opens its credential dialog instead of showing
       // a raw "All configured authentication methods failed".
       //
-      // `usedPassword` is what the attempt ACTUALLY carried (vault/session
+      // `attempted` is what the attempt ACTUALLY carried (vault/session
       // resolved), not what the stored entry happens to contain: the inline
       // password may be shadowed by an empty vault resolution.
-      if (isAuthDenied(error) && entry.auth.kind === 'password' && !usedPassword) {
+      if (isAuthDenied(error) && entry.auth.kind === 'password' && attempted?.password === undefined) {
         throw new NeedsPasswordError(alias, 'password')
       }
       throw error
@@ -972,7 +1007,9 @@ export class ConnectionManager {
       const hopResolved = await this.resolveEntryAuth(hop)
       const hopClient = await this.connectOrForgetRejectedSecret(
         hop,
-        hopResolved?.kind === 'password' && hopResolved.password !== undefined && hopResolved.password !== '',
+        hopResolved === undefined ? undefined : hopResolved.kind === 'password'
+          ? { password: hopResolved.password }
+          : { passphrase: hopResolved.passphrase },
         connectClient(
           buildConnectConfig(hop, this.opts, sock, {
             hostKeyPolicy: this.hostKeyPolicy,
@@ -1042,7 +1079,9 @@ export class ConnectionManager {
       const resolvedAuth = await this.resolveEntryAuth(entry)
       const client = await this.connectOrForgetRejectedSecret(
         entry,
-        resolvedAuth?.kind === 'password' && resolvedAuth.password !== undefined && resolvedAuth.password !== '',
+        resolvedAuth === undefined ? undefined : resolvedAuth.kind === 'password'
+          ? { password: resolvedAuth.password }
+          : { passphrase: resolvedAuth.passphrase },
         connectClient(
           buildConnectConfig(entry, this.opts, sock, {
             hostKeyPolicy: this.hostKeyPolicy,

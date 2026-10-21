@@ -51,7 +51,8 @@
 - **认证顺序**：ssh2 自己的默认顺序在同时配置密码与密钥时是 **password 先于 publickey/agent**——这正是「明明 key 能用却仍弹密码」的根源。现在通过 `authHandler` 固定为 **key → agent → password**。
 - **按需密码**：password 类型的主机不再在连接前无条件抛 `NEEDS_PASSWORD`；只要有 key/agent 可用就先尝试，确实被拒后才弹出密码框（类型化错误交给 GUI）。更正了一处判定：判断「本次尝试是否带了密码」用的是**实际解析出的凭据**（vault/会话），不是存储条目里的 inline 字段——后者可能被空的 vault 解析遮蔽。
 - **passphrase 归属**：显式密钥的 passphrase 只应用到它自己的 key；回退到默认 key 时不会被带过去。
-- 测试 +10：新增 `tests/ssh/connect-auth-order.test.ts`（默认 key 发现/顺序、key→agent→password、回退、passphrase 作用域、vault 覆盖），并把 `engine.test.ts` 的 agent/无 key 两个用例更新到新语义（默认 key 优先于 agent）。
+- **修复：首次输入密码连接失败、第二次才成功**。`forgetSessionPassword` 原本在「该 alias 有会话凭据 + 认证被拒」时**无条件**清理。密钥优先后，一个在弹窗前就已启动的**只带 key 的**连接尝试被拒时，会把用户刚输入的密码一并清掉；于是弹窗的重试拿到空凭据、再次弹窗，第二次输入才生效。现在只在「本次尝试**实际携带的**凭据与当前存储的完全相同」时才清理（`shouldForgetSessionSecret`），既不误删刚存入的密码，也不会把握手期间被替换的新密码清掉；被拒的密码仍会照旧清除以便重弹。
+- 测试 +14：新增 `tests/ssh/connect-auth-order.test.ts`（默认 key 发现/顺序、key→agent→password、回退、passphrase 作用域、vault 覆盖，以及 `shouldForgetSessionSecret` 的竞态回归 4 条），并把 `engine.test.ts` 的 agent/无 key 两个用例更新到新语义（默认 key 优先于 agent）。全量 **74 个测试文件 / 695 通过 / 4 跳过**。
 
 ### 内部清理
 
