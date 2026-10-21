@@ -52,7 +52,17 @@
 - **按需密码**：password 类型的主机不再在连接前无条件抛 `NEEDS_PASSWORD`；只要有 key/agent 可用就先尝试，确实被拒后才弹出密码框（类型化错误交给 GUI）。更正了一处判定：判断「本次尝试是否带了密码」用的是**实际解析出的凭据**（vault/会话），不是存储条目里的 inline 字段——后者可能被空的 vault 解析遮蔽。
 - **passphrase 归属**：显式密钥的 passphrase 只应用到它自己的 key；回退到默认 key 时不会被带过去。
 - **修复：首次输入密码连接失败、第二次才成功**。`forgetSessionPassword` 原本在「该 alias 有会话凭据 + 认证被拒」时**无条件**清理。密钥优先后，一个在弹窗前就已启动的**只带 key 的**连接尝试被拒时，会把用户刚输入的密码一并清掉；于是弹窗的重试拿到空凭据、再次弹窗，第二次输入才生效。现在只在「本次尝试**实际携带的**凭据与当前存储的完全相同」时才清理（`shouldForgetSessionSecret`），既不误删刚存入的密码，也不会把握手期间被替换的新密码清掉；被拒的密码仍会照旧清除以便重弹。
-- 测试 +14：新增 `tests/ssh/connect-auth-order.test.ts`（默认 key 发现/顺序、key→agent→password、回退、passphrase 作用域、vault 覆盖，以及 `shouldForgetSessionSecret` 的竞态回归 4 条），并把 `engine.test.ts` 的 agent/无 key 两个用例更新到新语义（默认 key 优先于 agent）。全量 **74 个测试文件 / 695 通过 / 4 跳过**。
+- 测试 +14：新增 `tests/ssh/connect-auth-order.test.ts`（默认 key 发现/顺序、key→agent→password、回退、passphrase 作用域、vault 覆盖，以及 `shouldForgetSessionSecret` 的竞态回归 4 条），并把 `engine.test.ts` 的 agent/无 key 两个用例更新到新语义（默认 key 优先于 agent）。全量 **75 个测试文件 / 709 通过 / 4 跳过**。
+
+### 新增：实时读取 `~/.ssh/config`（主机来源）
+
+- 新增 `src/ssh/ssh-config.ts`：每次调用**实时**解析 `~/.ssh/config`（`Host` / `HostName` / `Port` / `User` / `IdentityFile` / `ProxyJump`；大小写不敏感、跳过注释与空行）。文件缺失或不可读 = **空来源而不是错误**（只用 `dsh-ssh.json` 的用户不受影响）。
+- **不静默丢弃**：`Host *` / `Host web-?` 这类通配、以及没有 `HostName` 的块会被报告为 skipped（`wildcard` / `no-hostname`），而不是悄悄消失；`Host a b` 多模式也按不支持上报，不猜哪个名字才是用户要的。`Include` / `Match` 明确不在本阶段范围。
+- `IdentityFile` 在 OpenSSH 里是**累加**语义，而本插件每次连接只带一把 key，因此保留块内**第一个**；`ProxyJump` 逗号分隔展开为跳板链。
+- `withSshConfig(base)`：把「存储层 + 实时 config」组合成一个只读主视图——**`dsh-ssh.json` 覆盖层优先**（端口/用户/key/元数据以 GUI 编辑为准），config 只补缺；已接入引擎、工作区核心与**只读**的 GUI 路由，所以只存在于 config 里的别名能被列出、校验并直接用于 exec/SFTP/终端/隧道/集群。**插件从不写用户的 ssh config**。
+- 映射规则：块内有 `IdentityFile` → key 认证（`keyPath` 指向该文件，支持 `~`）；没有则 → password 类型但**不带密码**，于是引擎先试 key/agent、被拒后才弹密码框。
+- 测试 +14（`tests/ssh/ssh-config.test.ts`）：字段解析/默认值/大小写/首个 IdentityFile/ProxyJump 展开/通配与无 HostName 上报/重复块/缺失文件，以及组合视图的「存储优先、config 补齐、截图映射」。
+- 尚未完成（下一阶段）：**删除 config 主机只"忽略"**（目前写路径仍只认 JSON 存储），以及读取 `~/.ssh/known_hosts`。
 
 ### 内部清理
 

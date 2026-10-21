@@ -47,6 +47,7 @@ import { HostStore } from './ssh/store.ts'
 import { SecureHostStore } from './ssh/store.ts'
 import { checkCommand, commandGuardTargets } from './ssh/command-policy.ts'
 import { KnownHostsStore } from './ssh/known-hosts.ts'
+import { withSshConfig } from './ssh/ssh-config.ts'
 import { Vault } from './ssh/vault.ts'
 import { mountWorkspaceCore, genericLedgerPath, type WorkspaceCore } from './runtime/workspace-core.ts'
 import { mountHardsshHealth, watchHardsshOptionalServices } from './runtime/health.ts'
@@ -472,7 +473,12 @@ export function apply(ctx: Context, config?: Config): void {
     ? new Vault(undefined, { allowEnvUnlock: resolved.vaultAutoUnlock === 'env' })
     : undefined
   const secureHosts = new SecureHostStore(vault, undefined, undefined, resolved.secretStorage)
-  const engine = new SshEngine(secureHosts, undefined, {
+  // `~/.ssh/config` is a LIVE host source (VS Code Remote-SSH style): the stored
+  // entries keep the override layer, and a host that exists only in that file is
+  // usable without an import step. The engine reads through this view, so
+  // exec/SFTP/terminal/tunnels/cluster all see the same aliases.
+  const hosts = withSshConfig(secureHosts)
+  const engine = new SshEngine(hosts, undefined, {
     knownHosts,
     resolveSecrets: (entry) => secureHosts.resolveAuth(entry),
     redactOutput: vault === undefined ? undefined : (text) => vault.redact(text),
@@ -484,7 +490,7 @@ export function apply(ctx: Context, config?: Config): void {
 
   // Canonical provider-neutral workspace runtime. It is the only in-process
   // ledger/router used by fs, subprocess, routes, tools and host-delete guards.
-  const genericCore = mountWorkspaceCore(ctx, { engine, hosts: secureHosts })
+  const genericCore = mountWorkspaceCore(ctx, { engine, hosts })
   health.set('workspaceCore', { state: 'degraded', reason: 'workspace core is still initializing' })
   const boot = bootstrapGenericWorkspaceCore(genericCore, {
     legacyPath: ledgerPath(),
@@ -578,7 +584,10 @@ export function apply(ctx: Context, config?: Config): void {
   }
 
   const routes = makeRoutes({
-    hosts: secureHosts,
+    // Read-only host surface: the union of the stored hosts and the LIVE
+    // `~/.ssh/config`, so the GUI lists (and validates aliases for) config-only
+    // hosts too. Writes stay in the SSH routes, which own the JSON store.
+    hosts,
     engine,
     workspaces,
     registerHostWorkspace,
