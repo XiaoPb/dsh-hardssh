@@ -62,7 +62,20 @@
 - `withSshConfig(base)`：把「存储层 + 实时 config」组合成一个只读主视图——**`dsh-ssh.json` 覆盖层优先**（端口/用户/key/元数据以 GUI 编辑为准），config 只补缺；已接入引擎、工作区核心与**只读**的 GUI 路由，所以只存在于 config 里的别名能被列出、校验并直接用于 exec/SFTP/终端/隧道/集群。**插件从不写用户的 ssh config**。
 - 映射规则：块内有 `IdentityFile` → key 认证（`keyPath` 指向该文件，支持 `~`）；没有则 → password 类型但**不带密码**，于是引擎先试 key/agent、被拒后才弹密码框。
 - 测试 +14（`tests/ssh/ssh-config.test.ts`）：字段解析/默认值/大小写/首个 IdentityFile/ProxyJump 展开/通配与无 HostName 上报/重复块/缺失文件，以及组合视图的「存储优先、config 补齐、截图映射」。
-- 尚未完成（下一阶段）：**删除 config 主机只"忽略"**（目前写路径仍只认 JSON 存储），以及读取 `~/.ssh/known_hosts`。
+- 已定方案（下一阶段实施）：主机定义以 config 为唯一来源；GUI 增删改直接编辑 config（删块、非"忽略"）；一次性幂等迁移现有 JSON 主机；孤立元数据/凭据仅在**显式清理**时删除。
+
+### 新增：`~/.ssh/config` 写入层（方案 1 的基础，尚未接线）
+
+主机定义改为以 `~/.ssh/config` 为唯一来源后，GUI 的增删改需要**安全地编辑这个用户文件**。本阶段只落地写入层（`src/ssh/ssh-config-write.ts`）与其测试，**尚未改动任何调用方，因此不会写你的 config**：
+
+- **只改目标字段行**：仅 `Host`/`HostName`/`Port`/`User`/`IdentityFile`/`ProxyJump`；注释、空行、未知指令（`Compression`/`LocalForward`…）、块顺序、换行风格与 BOM 全部原样保留。
+- **清空即删行**：`null` 表示移除该行（回落到 OpenSSH 默认），不会写出空值；`undefined` 表示保持不动。
+- **同名重复块**：编辑第一份（OpenSSH 生效的那份）并报告其余重复；删除则**删除全部**重复块，并收拢多余空行、保真尾部换行。
+- **追加**：新块写在文件末尾、带一个空行分隔，`Port 22` 不写（默认值）。
+- **写入安全**：跨进程锁文件（桌面版与 `web` 可同时运行）+ 内容 hash 冲突检测（文件被外部改过 → `SshConfigConflictError`，绝不覆盖）+ 时间戳备份（保留最近 5 份）+ 同目录临时文件 rename 原子替换。
+- 测试 +16（`tests/ssh/ssh-config-write.test.ts`）：块范围解析/重复检测/CRLF、精准改字段、新增与删除字段行、重复块编辑与全删、未知别名、BOM 与尾部换行保真、追加位置、备份与冲突拒绝、读写往返。全量 **76 个测试文件 / 725 通过 / 4 跳过**。
+
+**下一阶段（未开始）**：一次性幂等迁移（把 7 台 JSON 主机写入 config，JSON 定义保留作备份）、合并优先级翻转为「config 为准」、GUI 增删改路由（含 diff 预览）与"孤立项手动清理"。
 
 ### 内部清理
 
