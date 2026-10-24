@@ -8,6 +8,7 @@
 import { HttpApiError, buildQuery, readJson, type HttpErrorBody } from '../client-http.ts'
 import {
   WORKSPACE_API,
+  type LocalRoot,
   type RemoteDirEntry,
   type SshWorkspaceRecord,
 } from '../protocol.ts'
@@ -79,6 +80,13 @@ export class WorkspaceApi {
     const response = await fetch(WORKSPACE_API.sshWorkspaceDir + buildQuery({ alias, path }))
     const body = await readJson<{ path: string; entries: RemoteDirEntry[] }>(response)
     return body
+  }
+
+  /** Quick-jump roots for the LOCAL workspace browser (Android/desktop). */
+  async listLocalRoots(): Promise<LocalRoot[]> {
+    const response = await fetch(WORKSPACE_API.localRoots)
+    const body = await readJson<{ roots: LocalRoot[] }>(response)
+    return body.roots
   }
 }
 

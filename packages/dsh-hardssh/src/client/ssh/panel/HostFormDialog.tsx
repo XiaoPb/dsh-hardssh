@@ -4,7 +4,7 @@
  * passphrase, password) are never pre-filled when editing (the API only
  * exposes the secret-free summary).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SshApi } from '../api.ts'
 import type { HostPayload, SshAuthKind, SshHostSummary } from '../../../ssh/protocol.ts'
 import { errorMessage, tt } from './helpers.ts'
@@ -77,6 +77,31 @@ export function HostFormDialog({ api, editing, onClose, onSaved }: HostFormDialo
   const [form, setForm] = useState<FormState>(() => blankOf(editing))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [keyBusy, setKeyBusy] = useState(false)
+  const [keyNotice, setKeyNotice] = useState<string | null>(null)
+  const [keyError, setKeyError] = useState<string | null>(null)
+  const [generatedPublicKey, setGeneratedPublicKey] = useState<string | null>(null)
+  const keyFileInput = useRef<HTMLInputElement | null>(null)
+
+  // New hosts start from the discovered default key (imported/generated keys
+  // land in ~/.ssh, and Android may also expose a public key directory).
+  // Editing keeps the existing stored credential untouched.
+  useEffect(() => {
+    if (editing != null) return
+    const lookup = (api as Partial<Pick<SshApi, 'keyInfo'>>).keyInfo
+    if (typeof lookup !== 'function') return
+    let alive = true
+    void lookup.call(api).then(
+      (info) => {
+        if (!alive) return
+        if (info.defaultKeyPath !== undefined) {
+          setForm(prev => prev.keyPath === '' ? { ...prev, keyPath: info.defaultKeyPath! } : prev)
+        }
+      },
+      () => undefined,
+    )
+    return () => { alive = false }
+  }, [api, editing])
 
   // Escape closes the dialog.
   useEffect(() => {
@@ -89,6 +114,56 @@ export function HostFormDialog({ api, editing, onClose, onSaved }: HostFormDialo
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
     setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  /** Import one private key selected through the WebView file chooser. */
+  const importKeyFile = async (file: File | undefined): Promise<void> => {
+    if (file === undefined) return
+    setKeyBusy(true)
+    setKeyError(null)
+    setKeyNotice(null)
+    setGeneratedPublicKey(null)
+    try {
+      const content = await file.text()
+      const result = await api.importKey(file.name, content)
+      set('keyPath', result.path)
+      setKeyNotice(tt('form.keyImported'))
+    } catch (cause) {
+      setKeyError(errorMessage(cause))
+    } finally {
+      setKeyBusy(false)
+      if (keyFileInput.current !== null) keyFileInput.current.value = ''
+    }
+  }
+
+  /** Generate a fresh Ed25519 pair and show its public half. */
+  const generateKey = async (): Promise<void> => {
+    setKeyBusy(true)
+    setKeyError(null)
+    setKeyNotice(null)
+    try {
+      const result = await api.generateKey('id_ed25519')
+      set('keyPath', result.path)
+      setGeneratedPublicKey(result.publicKey)
+      setKeyNotice(tt('form.keyGenerated'))
+    } catch (cause) {
+      setKeyError(errorMessage(cause))
+    } finally {
+      setKeyBusy(false)
+    }
+  }
+
+  /** Copy the generated public line (falls back to manual selection). */
+  const copyPublicKey = async (): Promise<void> => {
+    if (generatedPublicKey === null) return
+    try {
+      if (navigator.clipboard?.writeText === undefined) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(generatedPublicKey)
+      setKeyError(null)
+      setKeyNotice(tt('form.publicKeyCopied'))
+    } catch {
+      setKeyError(tt('form.copyFailed'))
+    }
   }
 
   const save = async (): Promise<void> => {
@@ -208,17 +283,68 @@ export function HostFormDialog({ api, editing, onClose, onSaved }: HostFormDialo
           {editing != null && <span className={css.hint}>{tt('form.authKeepHint')}</span>}
         </div>
         {form.authKind === 'key' ? (
-          <div className={css.formRow}>
-            <label className={css.field}>
-              <span className={css.fieldLabel}>{tt('form.keyPath')}</span>
-              <input className={css.input} value={form.keyPath} onChange={event => { set('keyPath', event.target.value) }} />
-              <span className={css.hint}>{form.keyPath.trim() === '' ? tt('form.agentHint') : tt('form.keyPathHint')}</span>
-            </label>
-            <label className={css.field}>
-              <span className={css.fieldLabel}>{tt('form.passphrase')}</span>
-              <input className={css.input} type="password" value={form.passphrase} onChange={event => { set('passphrase', event.target.value) }} />
-            </label>
-          </div>
+          <>
+            <div className={css.formRow}>
+              <div className={css.field}>
+                <span className={css.fieldLabel}>{tt('form.keyPath')}</span>
+                <input className={css.input} data-test="key-path" value={form.keyPath} onChange={event => { set('keyPath', event.target.value) }} />
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className={css.ghostButton}
+                    data-test="key-import"
+                    disabled={saving || keyBusy}
+                    onClick={() => keyFileInput.current?.click()}
+                  >
+                    {tt('form.keyImport')}
+                  </button>
+                  <button
+                    type="button"
+                    className={css.ghostButton}
+                    data-test="key-generate"
+                    disabled={saving || keyBusy}
+                    onClick={() => void generateKey()}
+                  >
+                    {tt('form.keyGenerate')}
+                  </button>
+                  <input
+                    ref={keyFileInput}
+                    type="file"
+                    data-test="key-file"
+                    style={{ display: 'none' }}
+                    onChange={(event) => { void importKeyFile(event.target.files?.[0]) }}
+                  />
+                </div>
+                <span className={css.hint}>{form.keyPath.trim() === '' ? tt('form.agentHint') : tt('form.keyPathHint')}</span>
+                {keyNotice !== null && <span className={css.hint} data-test="key-notice">{keyNotice}</span>}
+                {keyError !== null && <span className={css.formError}>{keyError}</span>}
+              </div>
+              <label className={css.field}>
+                <span className={css.fieldLabel}>{tt('form.passphrase')}</span>
+                <input className={css.input} type="password" value={form.passphrase} onChange={event => { set('passphrase', event.target.value) }} />
+              </label>
+            </div>
+            {generatedPublicKey !== null && (
+              <div className={css.field}>
+                <span className={css.fieldLabel}>{tt('form.publicKey')}</span>
+                <textarea
+                  className={css.input}
+                  data-test="public-key"
+                  readOnly
+                  rows={3}
+                  value={generatedPublicKey}
+                  style={{ minHeight: 72, resize: 'vertical', fontFamily: 'ui-monospace, monospace' }}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" className={css.ghostButton} onClick={() => void copyPublicKey()}>
+                    {tt('form.copyPublicKey')}
+                  </button>
+                </div>
+                <span className={css.hint}>{tt('form.publicKeyHint')}</span>
+              </div>
+            )}
+          </>
         ) : (
           <label className={css.field}>
             <span className={css.fieldLabel}>{tt('form.password')}</span>
@@ -295,8 +421,8 @@ export function HostFormDialog({ api, editing, onClose, onSaved }: HostFormDialo
         {error !== null && <p className={css.formError}>{tt('common.error', { error })}</p>}
         </div>
         <div className={css.modalFooter}>
-          <button type="button" className={css.modalGhost} disabled={saving} onClick={onClose}>{tt('form.cancel')}</button>
-          <button type="button" className={css.modalPrimary} disabled={saving} data-test="host-form-save" onClick={() => { void save() }}>{tt('form.save')}</button>
+          <button type="button" className={css.modalGhost} disabled={saving || keyBusy} onClick={onClose}>{tt('form.cancel')}</button>
+          <button type="button" className={css.modalPrimary} disabled={saving || keyBusy} data-test="host-form-save" onClick={() => { void save() }}>{tt('form.save')}</button>
         </div>
       </div>
     </div>

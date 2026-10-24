@@ -195,6 +195,36 @@ export interface ImportResult {
   skippedNames: string[]
 }
 
+/** Key discovery view shown by the host form (no secret material). */
+export interface KeyInfoView {
+  /** The app/user home directory the engine sees. */
+  home: string
+  /** Directory imported/generated keys are written to. */
+  keysDir: string
+  /** Ordered default-key search directories. */
+  searchDirs: string[]
+  /** First existing default key, if any. */
+  defaultKeyPath?: string
+  /** True on the Android engine process. */
+  android: boolean
+  /** App-visible public data root on Android (if injected). */
+  androidUserData?: string
+}
+
+/** Result of importing one private key from the browser. */
+export interface KeyImportResult {
+  /** Absolute host path of the stored private key. */
+  path: string
+}
+
+/** Result of generating a new Ed25519 key pair. */
+export interface KeyGenerateResult {
+  /** Absolute host path of the stored private key. */
+  path: string
+  /** OpenSSH public-key line to install in the server's authorized_keys. */
+  publicKey: string
+}
+
 /** JSON error body used by every route. */
 export interface ApiErrorBody {
   error: string
@@ -247,6 +277,9 @@ export const SSH_API_BASE = '/api/dsh-ssh' as const
 export const SSH_API = {
   hosts: SSH_API_BASE + '/hosts',
   importSshConfig: SSH_API_BASE + '/hosts/import-ssh-config',
+  keyInfo: SSH_API_BASE + '/keys/info',
+  keyImport: SSH_API_BASE + '/keys/import',
+  keyGenerate: SSH_API_BASE + '/keys/generate',
   test: SSH_API_BASE + '/test',
   exec: SSH_API_BASE + '/exec',
   cluster: SSH_API_BASE + '/cluster',

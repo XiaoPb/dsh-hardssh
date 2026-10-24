@@ -277,6 +277,50 @@ Example (`cordis.patch.yml`):
     secretStorage: none   # or vault
 ```
 
+## Android: local directories and SSH keys
+
+### Local directory picking
+
+Android has no OS folder dialog; the DSH kernel only serves the `browse`
+capability. Since 0.2.8 the plugin probes the host capability:
+
+- `browse` only → opens the in-app directory browser (absolute path input plus
+  Home / Internal storage / Documents shortcuts);
+- `native` only → keeps the desktop system chooser.
+
+If `/storage/emulated/0` cannot be read, grant **All files access** in DSH
+Mobile's Settings → Permission center.
+
+### Where the private key goes
+
+Use the host form; no manual path hunting is required:
+
+1. **Import key** — choose Key auth → Import key → pick `id_ed25519` / `.pem`.
+   The private key is written to the app-private directory (0700/0600) and the
+   path is filled automatically:
+
+   ```text
+   /data/user/0/app.dsh.mobile/files/dsh-home/.ssh/<name>
+   ```
+
+2. **Generate key** — creates an Ed25519 pair, stores the private half, and
+   shows the **public key**. Append the whole line to the server:
+
+   ```bash
+   echo 'ssh-ed25519 AAAA... dsh-hardssh' >> ~/.ssh/authorized_keys
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+
+For manual placement, prefer the public data directory (the app creates `ssh/`):
+
+```text
+/storage/emulated/0/Documents/dshdata/ssh/id_ed25519
+```
+
+Enter that **absolute path** in the form; a key in a default search directory is
+also pre-filled for new hosts. Android has no ssh-agent, so an empty path only
+means "use a default key file".
+
 ## Command guard (optional)
 
 **Why**: some hosts must not run heavy work inline — the classic case is a Slurm

@@ -12,7 +12,7 @@ import { unlink } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { pipeline } from 'node:stream/promises'
 import { basename, join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
@@ -22,12 +22,17 @@ import type { HostStore } from './store.ts'
 import { HostKeyMismatchError, HostKeyUnknownError, type KnownHostsStore } from './known-hosts.ts'
 import { NeedsPasswordError } from './engine.ts'
 import { MIN_MASTER_PASSWORD_LENGTH } from './vault.ts'
+import { findDefaultPrivateKey, generatePrivateKey, importPrivateKey, privateKeySearchDirs, sanitizeKeyName } from './keys.ts'
+import { androidUserDataRoot, isAndroidRuntime } from '../platform.ts'
 // Shared host HTTP boundary (A-05): one loopback fence, one JSON body reader,
 // one JSON writer for every host route family — copies drift apart silently.
 import { isLoopbackRequest, queryParam, readJsonBody as readJsonBodyResult, writeJson } from '../host-http.ts'
 
 /** Cap on JSON request bodies (host entries and exec payloads are small). */
 const MAX_JSON_BODY_BYTES = 64 * 1024
+
+/** Cap on one imported/generated private-key text (keys are a few KB). */
+const MAX_KEY_TEXT_BYTES = 32 * 1024
 
 /** Cap on declared upload bodies (staged to disk before SFTP). */
 export const DEFAULT_MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
@@ -275,6 +280,8 @@ export interface SshRoutesDeps {
   onHostInvalidated?: (alias: string) => void
   /** Read-only compatibility/degradation registry (`/health` serves a copy). */
   health?: { snapshot: () => import('./protocol.ts').HardsshHealthSnapshot }
+  /** Directory imported/generated keys are written to (tests inject a sandbox). */
+  keysDir?: string
 }
 
 /** Every /api/dsh-ssh route plus the terminal upgrade, owned by one call. */
@@ -302,6 +309,7 @@ export function makeRoutes(deps: SshRoutesDeps): SshRoutes {
   const safeMessage = (error: unknown): string => redact(error instanceof Error ? error.message : String(error))
   const safeErrorBody = (error: unknown): ApiErrorBody => errorBody(error, redact)
   const staging = deps.stagingDir ?? join(tmpdir(), 'dsh-ssh-uploads')
+  const keysDir = deps.keysDir ?? join(homedir(), '.ssh')
   const uploadLimitBytes = deps.uploadLimitBytes ?? DEFAULT_MAX_UPLOAD_BYTES
   if (!Number.isSafeInteger(uploadLimitBytes) || uploadLimitBytes < 0) {
     throw new RangeError('uploadLimitBytes must be a non-negative safe integer')
@@ -478,6 +486,77 @@ export function makeRoutes(deps: SshRoutesDeps): SshRoutes {
         try {
           const result = await store.importFromSshConfig()
           writeJson(res, 200, { result })
+        } catch (error) {
+          writeJson(res, 500, { error: safeMessage(error) })
+        }
+      },
+    },
+    // -------------------------------------------------------------- keys
+    {
+      kind: 'exact',
+      path: SSH_API.keyInfo,
+      handler: (req, res) => {
+        if (!guard(req, res, 'GET')) return
+        const searchDirs = privateKeySearchDirs([keysDir])
+        const defaultKeyPath = findDefaultPrivateKey(searchDirs)
+        const appData = androidUserDataRoot()
+        writeJson(res, 200, {
+          home: homedir(),
+          keysDir,
+          searchDirs,
+          ...(defaultKeyPath === undefined ? {} : { defaultKeyPath }),
+          android: isAndroidRuntime(),
+          ...(appData === undefined ? {} : { androidUserData: appData }),
+        })
+      },
+    },
+    {
+      kind: 'exact',
+      path: SSH_API.keyImport,
+      handler: async (req, res) => {
+        if (!guard(req, res, 'POST')) return
+        const body = await readJsonBody(req)
+        if (body === undefined) {
+          writeJson(res, 400, { error: 'invalid JSON body' })
+          return
+        }
+        const content = body.content
+        if (typeof content !== 'string' || content === '') {
+          writeJson(res, 400, { error: 'content is required' })
+          return
+        }
+        if (Buffer.byteLength(content, 'utf8') > MAX_KEY_TEXT_BYTES) {
+          writeJson(res, 413, { error: `private key exceeds ${MAX_KEY_TEXT_BYTES} bytes` })
+          return
+        }
+        const requested = typeof body.name === 'string' ? body.name.trim() : ''
+        if (requested !== '' && sanitizeKeyName(requested) === undefined) {
+          writeJson(res, 400, { error: 'name must be a single file name (letters, digits, dot, dash, underscore)' })
+          return
+        }
+        try {
+          const path = importPrivateKey(content, requested === '' ? undefined : requested, keysDir)
+          writeJson(res, 200, { path })
+        } catch (error) {
+          writeJson(res, 400, { error: safeMessage(error) })
+        }
+      },
+    },
+    {
+      kind: 'exact',
+      path: SSH_API.keyGenerate,
+      handler: async (req, res) => {
+        if (!guard(req, res, 'POST')) return
+        const body = await readJsonBody(req)
+        // An empty body is a valid "generate with defaults" request.
+        const requested = typeof body?.name === 'string' ? body.name.trim() : ''
+        if (requested !== '' && sanitizeKeyName(requested) === undefined) {
+          writeJson(res, 400, { error: 'name must be a single file name (letters, digits, dot, dash, underscore)' })
+          return
+        }
+        try {
+          const result = generatePrivateKey(requested === '' ? undefined : requested, keysDir)
+          writeJson(res, 200, result)
         } catch (error) {
           writeJson(res, 500, { error: safeMessage(error) })
         }

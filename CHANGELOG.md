@@ -2,6 +2,21 @@
 
 > 自 v0.1.2 起开始记录；更早的迭代版本见 Git 提交历史。
 
+## v0.2.8 — 2026-10-24
+
+### Android：本地工作区不再报 `directory picker failed`
+
+- **根因**：dsh 0.2.x 把目录选择拆成 `native` / `browse` 两种 capability，Android 只挂 `browse`；本插件的“本地工作区…”仍无条件调用 `uiWorkspace.pickDirectory()`（native-only），于是必然报
+  `directoryPicker.pick needs the native capability; the composed picker serves "browse"`。
+- **修复**：本地分支先探测能力。只有 `browse` 时打开应用内目录浏览器（绝对路径输入 + Home / 内部存储 / Documents 快捷入口），只有 `native` 时保持原系统对话框；旧内核（无 `listDirectory`）继续走 native。新增 `/api/dsh-hardssh/local/roots` 只读路由提供快捷入口。
+
+### Android：SSH 私钥导入 / 生成 / 自动发现
+
+- **导入私钥**：主机表单新增「导入私钥」，通过 WebView 文件选择器读取密钥文本，写入应用私有 `~/.ssh`（0700/0600），路径自动填入。
+- **生成新密钥**：可生成 Ed25519 密钥对，私钥落到同一目录，表单直接显示 OpenSSH 公钥，复制到服务器 `authorized_keys` 即可。
+- **默认目录发现**：默认私钥搜索扩展到 `$HOME/.ssh`、Android 公开数据根 `DSH_ANDROID_USER_DATA/ssh`、`Documents/dshdata/ssh`；新建主机时自动预填发现到的默认密钥。
+- 新增 `/api/dsh-ssh/keys/info|import|generate` 路由（回环限制、文件名清洗、路径穿越拒绝、大小上限）。
+
 ## v0.2.7 — 2026-10-08
 
 ### 支持 dsh 0.2.0 与桌面版（Electron）

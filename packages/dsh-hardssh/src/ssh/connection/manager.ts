@@ -1,6 +1,4 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { Client, type ConnectConfig } from 'ssh2'
 import { ConnectionPool, type SshConnectionService } from './pool.ts'
 import { holdLeaseUntilSettled, type ClientLease } from './lease.ts'
@@ -15,6 +13,7 @@ import {
 import { expandHome, type HostStore } from '../store.ts'
 import type { ClusterResult, ExecResult, SshHostEntry, SshHostSummary, TestResult } from '../protocol.ts'
 import type { HostStoreView } from '../../core.ts'
+import { findDefaultPrivateKey } from '../keys.ts'
 
 export interface SshInvalidateOptions {
   /**
@@ -206,24 +205,7 @@ export function sshAgentConfig(): string | undefined {
 }
 
 /** Default private keys OpenSSH tries, in its own preference order. */
-export const DEFAULT_PRIVATE_KEY_NAMES = ['id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa'] as const
-
-/**
- * The first existing default private key in a directory, or undefined.
- *
- * A host whose configured key is missing/rejected is still reachable when one
- * of these is accepted — this is the same "try the usual keys" behaviour
- * OpenSSH and VS Code Remote-SSH have. An explicit `IdentityFile` always wins.
- * @param sshDir - directory to inspect; defaults to the user's `~/.ssh`.
- * @returns an absolute key path, or undefined when none of them exists.
- */
-export function defaultPrivateKeyPath(sshDir = join(homedir(), '.ssh')): string | undefined {
-  for (const name of DEFAULT_PRIVATE_KEY_NAMES) {
-    const candidate = join(sshDir, name)
-    if (existsSync(candidate)) return candidate
-  }
-  return undefined
-}
+export { DEFAULT_PRIVATE_KEY_NAMES, defaultPrivateKeyPath } from '../keys.ts'
 
 /** Detect whether an OpenSSH/PEM private key file is passphrase-encrypted.
  *  OpenSSH-format keys keep the cipher/kdf strings in PLAINTEXT inside the
@@ -295,7 +277,7 @@ export function buildConnectConfig(
   let keyPath = auth.kind === 'key' && auth.keyPath !== undefined ? expandHome(auth.keyPath) : undefined
   let keyPassphrase = auth.kind === 'key' ? auth.passphrase : undefined
   if (keyPath === undefined || keyPath === '' || !existsSync(keyPath)) {
-    keyPath = (buildContext.defaultKeyPath ?? defaultPrivateKeyPath)()
+    keyPath = (buildContext.defaultKeyPath ?? findDefaultPrivateKey)()
     keyPassphrase = undefined
   }
   if (keyPath !== undefined) {
@@ -958,7 +940,7 @@ export class ConnectionManager {
     // the auth-failure path.
     if (resolved?.kind === 'password' && (resolved.password === undefined || resolved.password === '')) {
       const hasKeyMaterial = (resolved.keyPath !== undefined && resolved.keyPath !== '' && existsSync(expandHome(resolved.keyPath)))
-        || defaultPrivateKeyPath() !== undefined
+        || findDefaultPrivateKey() !== undefined
       if (!hasKeyMaterial && sshAgentConfig() === undefined) {
         throw new NeedsPasswordError(entry.alias, 'password')
       }

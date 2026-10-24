@@ -11,6 +11,8 @@
  * capabilities directly) and had no remaining UI consumer, so it was removed.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { posix } from 'node:path'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { HostStore } from './ssh/store.ts'
@@ -19,7 +21,8 @@ import { HostKeyMismatchError, HostKeyUnknownError } from './ssh/known-hosts.ts'
 import { isLoopbackRequest, queryParam, readJsonBody as readJsonBodyShared, writeJson } from './host-http.ts'
 import type { WorkspaceStoreView } from './backend.ts'
 import { BackendError, backendErrorStatus, sortWorkspaceEntries } from './backend.ts'
-import { WORKSPACE_API } from './protocol.ts'
+import { WORKSPACE_API, type LocalRoot } from './protocol.ts'
+import { androidUserDataRoot, isAndroidRuntime } from './platform.ts'
 
 /** Cap on JSON request bodies (file writes carry content). */
 const MAX_JSON_BODY_BYTES = 4 * 1024 * 1024
@@ -143,6 +146,31 @@ export interface WorkspaceRoutesDeps {
   registerHostWorkspace?: (anchorPath: string, title: string) => Promise<void>
   /** Drop the host workspace registration for an anchor dir. */
   unregisterHostWorkspace?: (anchorPath: string) => Promise<void>
+}
+
+/**
+ * Quick-jump roots for the local workspace browser. Android has no OS folder
+ * dialog, so the client needs a few well-known starting points; the actual
+ * listing still goes through the kernel browse capability, which applies the
+ * app's real read permissions.
+ *
+ * @returns deduplicated roots in display order.
+ */
+export function localPickerRoots(): LocalRoot[] {
+  const candidates: LocalRoot[] = [{ kind: 'home', path: homedir() }]
+  if (isAndroidRuntime()) {
+    const appData = androidUserDataRoot()
+    if (appData !== undefined) candidates.push({ kind: 'app-data', path: appData })
+    candidates.push({ kind: 'documents', path: '/storage/emulated/0/Documents' })
+    candidates.push({ kind: 'storage', path: '/storage/emulated/0' })
+    if (existsSync('/storage/emulated/0/Download')) candidates.push({ kind: 'downloads', path: '/storage/emulated/0/Download' })
+  }
+  const seen = new Set<string>()
+  return candidates.filter((root) => {
+    if (root.path === '' || seen.has(root.path)) return false
+    seen.add(root.path)
+    return true
+  })
 }
 
 /**
@@ -382,6 +410,20 @@ export function makeRoutes(deps: WorkspaceRoutesDeps): WebRoute[] {
   }
 
   /**
+   * Quick-jump roots for the LOCAL workspace browser. Read-only, loopback
+   * only: the host's directory listing itself comes from the kernel's
+   * `directoryPicker` browse capability, not from this route.
+   */
+  const localRootsRoute: WebRoute = {
+    kind: 'exact',
+    path: WORKSPACE_API.localRoots,
+    handler: (req, res) => {
+      if (!guard(req, res, 'GET')) return
+      writeJson(res, 200, { roots: localPickerRoots() })
+    },
+  }
+
+  /**
    * Replay host-workspace registration for every stored record. Registration
    * happens only on create/delete, so a process restart (or a registration
    * that failed before compensation existed) leaves records whose sidebar
@@ -412,5 +454,5 @@ export function makeRoutes(deps: WorkspaceRoutesDeps): WebRoute[] {
     },
   }
 
-  return [hostsRoute, wsRoute, itemRoute, dirRoute, reconcileRoute]
+  return [hostsRoute, wsRoute, itemRoute, dirRoute, localRootsRoute, reconcileRoute]
 }

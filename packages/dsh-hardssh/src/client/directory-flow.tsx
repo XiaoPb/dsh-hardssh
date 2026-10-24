@@ -25,16 +25,58 @@ import { createPortal } from 'react-dom'
 // the ui-workspace package, plus the DirectoryFlowOwnerProps contract.
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { DirectoryFlowOwnerProps } from '@deepseek-ai/dsh-client-ui-workspace/client'
-import type { SshWorkspaceRecord } from '../protocol.ts'
+import type { LocalRoot, SshWorkspaceRecord } from '../protocol.ts'
 import { tt } from './text.ts'
 import css from './workspace.module.css'
 import { CloudIcon, ComputerIcon } from './icons.tsx'
 import { checkLocalWorkspacePath } from './local-workspace-path.ts'
 
+/** One directory row returned by the kernel's browse capability. */
+interface LocalDirectoryEntry {
+  /** Base name shown in a row (a root crumb carries its full path). */
+  name: string
+  /** Absolute host path. */
+  path: string
+  /** Hidden by the host platform convention. */
+  hidden: boolean
+}
+
+/** One directory level plus its ancestry, as the browse capability reports it. */
+interface LocalDirectoryListing {
+  path: string
+  home: string
+  crumbs: LocalDirectoryEntry[]
+  entries: LocalDirectoryEntry[]
+  truncated: boolean
+}
+
+/** True when a browse call failed only because the host serves `native`. */
+export function isNativeCapabilityError(error: unknown): boolean {
+  const record = error as {
+    rpcError?: { code?: unknown; details?: { capability?: unknown } }
+    code?: unknown
+    details?: { capability?: unknown }
+  } | null
+  const rpc = record?.rpcError ?? record
+  return rpc?.code === 'directory-picker/unavailable' && rpc?.details?.capability === 'native'
+}
+
+/** Marker code for an old kernel with neither `listDirectory` nor `native`. */
+export const NO_BROWSE_ERROR_CODE = 'dsh-hardssh/no-browse'
+
+/** True when the injected browse adapter reported "no listing method". */
+export function isNoBrowseError(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === NO_BROWSE_ERROR_CODE
+}
+
 /** The injected face: host native picker + our workspace manager API. */
 export interface DirectoryFlowInjected {
   /** Ask the local Host to open its native single-directory chooser. */
   pickDirectory: () => Promise<string | null>
+  /** List one local directory level through the kernel's browse capability. */
+  listLocalDir?: (path?: string) => Promise<LocalDirectoryListing>
+  /** Quick-jump roots for the local browser. */
+  listLocalRoots?: () => Promise<LocalRoot[]>
   /** Create an SSH workspace (host API). */
   createSshWorkspace: (input: { title: string; alias: string; remoteRoot: string }) => Promise<SshWorkspaceRecord>
   /** List configured SSH hosts (host API). */
@@ -56,7 +98,7 @@ export interface DirectoryFlowInjected {
 }
 
 /** The two entry choices after "Add workspace…". */
-type Choice = 'menu' | 'ssh' | 'browsing' | 'picking-local'
+type Choice = 'menu' | 'ssh' | 'browsing' | 'picking-local' | 'local-browsing'
 
 /** A resolved anchor rect for the dropdown. */
 interface AnchorRect {
@@ -140,6 +182,9 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
   const [title, setTitle] = useState('')
   const [hosts, setHosts] = useState<Array<{ alias: string; host: string; port: number; user: string }>>([])
   const [dirEntries, setDirEntries] = useState<Array<{ name: string; type: 'dir' | 'file' | 'other'; size: number; mtimeMs: number }>>([])
+  const [localListing, setLocalListing] = useState<LocalDirectoryListing | null>(null)
+  const [localPathInput, setLocalPathInput] = useState('')
+  const [localRoots, setLocalRoots] = useState<LocalRoot[]>([])
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -165,6 +210,9 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
     setDirPath('')
     setTitle('')
     setDirEntries([])
+    setLocalListing(null)
+    setLocalPathInput('')
+    setLocalRoots([])
     setLoading(false)
     setCreating(false)
     setSavingHost(false)
@@ -261,10 +309,39 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
    * to escape the click handler and leave the menu body empty. Converting it
    * into a rejection routes it through the same visible error path.
    */
-  const pickLocal = (): void => {
-    const request = ++localPickRequestSequence.current
-    setChoice('picking-local')
-    setError(null)
+  /** Map a path-policy failure onto the operator-facing copy. */
+  const localPathProblem = (path: string): string | null => {
+    const checked = checkLocalWorkspacePath(path)
+    if (checked.ok) return null
+    return tt(
+      checked.problem === 'filesystem-root' ? 'flow.rootPath'
+        : checked.problem === 'not-absolute' ? 'flow.relativePath'
+          : 'flow.emptyPath',
+    )
+  }
+
+  /**
+   * Commit one local directory. `keepOpen` distinguishes the in-app browser
+   * (show the reason inline and let the operator navigate elsewhere) from the
+   * native chooser (re-arm the menu and report through the owner).
+   */
+  const commitLocalPath = (path: string, keepOpen: boolean): void => {
+    const problem = localPathProblem(path)
+    if (problem !== null) {
+      if (keepOpen) {
+        setError(problem)
+      } else {
+        setChoice('menu')
+        reportFailure(new Error(problem))
+      }
+      return
+    }
+    const checked = checkLocalWorkspacePath(path)
+    if (checked.ok) outcome.current.onPicked(checked.path)
+  }
+
+  /** Drive the kernel's native chooser (desktop). */
+  const pickNativeLocal = (request: number): void => {
     Promise.resolve()
       .then(() => props.pickDirectory())
       .then(
@@ -274,21 +351,7 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
             outcome.current.onCancel()
             return
           }
-          // The kernel's session creation runs mkdir(cwd, { recursive: true })
-          // and treats EPERM as fatal, so a drive/share ROOT would become a
-          // workspace whose "＋" can never open a session. Refuse it here with
-          // the reason spelled out, instead of storing a broken workspace.
-          const checked = checkLocalWorkspacePath(path)
-          if (!checked.ok) {
-            setChoice('menu')
-            reportFailure(new Error(tt(
-              checked.problem === 'filesystem-root' ? 'flow.rootPath'
-                : checked.problem === 'not-absolute' ? 'flow.relativePath'
-                  : 'flow.emptyPath',
-            )))
-            return
-          }
-          outcome.current.onPicked(checked.path)
+          commitLocalPath(path, false)
         },
         (reason: unknown) => {
           if (request !== localPickRequestSequence.current || !openRef.current) return
@@ -297,6 +360,98 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
           reportFailure(reason)
         },
       )
+  }
+
+  /** Load the host's quick-jump roots (best effort; the browser stays usable). */
+  const loadLocalRoots = (request: number): void => {
+    if (props.listLocalRoots === undefined) return
+    void props.listLocalRoots().then(
+      (roots) => {
+        if (request === localPickRequestSequence.current && openRef.current) setLocalRoots(roots)
+      },
+      () => undefined,
+    )
+  }
+
+  /**
+   * Choose "Local workspace": probe the kernel capability first.
+   *
+   * 0.2.x hosts serve exactly one of `native` (one OS chooser) or `browse`
+   * (listing primitives). Android is always browse, so calling the native
+   * `pickDirectory()` unconditionally is guaranteed to fail there. The probe
+   * uses the browse verb and falls back to native only when the host reports
+   * that it serves the native capability.
+   */
+  const pickLocal = (): void => {
+    const request = ++localPickRequestSequence.current
+    setChoice('local-browsing')
+    setLocalListing(null)
+    setLocalPathInput('')
+    setError(null)
+    if (props.listLocalDir === undefined) {
+      setChoice('picking-local')
+      pickNativeLocal(request)
+      return
+    }
+    setLoading(true)
+    void Promise.resolve()
+      .then(() => props.listLocalDir!(undefined))
+      .then(
+        (listing) => {
+          if (request !== localPickRequestSequence.current || !openRef.current) return
+          setLoading(false)
+          setLocalListing(listing)
+          setLocalPathInput(listing.path)
+          loadLocalRoots(request)
+        },
+        (reason: unknown) => {
+          if (request !== localPickRequestSequence.current || !openRef.current) return
+          setLoading(false)
+          if (isNativeCapabilityError(reason) || isNoBrowseError(reason)) {
+            setChoice('picking-local')
+            pickNativeLocal(request)
+            return
+          }
+          setChoice('menu')
+          reportFailure(reason)
+        },
+      )
+  }
+
+  /** Browse one local directory level through the kernel browse capability. */
+  const browseLocal = async (path?: string): Promise<void> => {
+    if (props.listLocalDir === undefined) {
+      setError(tt('flow.noPicker'))
+      return
+    }
+    const request = ++directoryRequestSequence.current
+    setChoice('local-browsing')
+    setLoading(true)
+    setError(null)
+    try {
+      const listing = await props.listLocalDir(path)
+      if (request !== directoryRequestSequence.current || !openRef.current) return
+      setLocalListing(listing)
+      setLocalPathInput(listing.path)
+    } catch (reason: unknown) {
+      if (request !== directoryRequestSequence.current || !openRef.current) return
+      if (isNoBrowseError(reason)) {
+        setError(tt('flow.noPicker'))
+        return
+      }
+      const message = reason instanceof Error ? reason.message : String(reason)
+      setError(/EACCES|EPERM|permission denied/i.test(message)
+        ? `${tt('flow.localDenied')}\n${message}`
+        : message)
+    } finally {
+      if (request === directoryRequestSequence.current && openRef.current) setLoading(false)
+    }
+  }
+
+  /** Commit the directory currently shown (or typed) in the local browser. */
+  const useLocalDir = (): void => {
+    const path = localPathInput.trim() === '' ? localListing?.path ?? '' : localPathInput
+    commitLocalPath(path, true)
   }
 
   /** Browse a remote dir level for the SSH branch. When the connection needs
@@ -407,11 +562,28 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
   // Position the dropdown under the trigger, clamped inside the viewport.
   // The "add server" mini-form is taller — give it room so nothing clips.
   const menuWidth = choice === 'menu' ? 200 : 360
-  const menuHeight = addingHost ? Math.min(560, window.innerHeight - 16) : 320
+  const menuHeight = choice === 'local-browsing'
+    ? Math.min(460, window.innerHeight - 16)
+    : addingHost ? Math.min(560, window.innerHeight - 16) : 320
   const rawTop = anchor !== undefined ? anchor.bottom + 4 : 56
   const rawLeft = anchor !== undefined ? anchor.left : Math.max(8, window.innerWidth - menuWidth - 8)
   const top = Math.max(8, Math.min(rawTop, window.innerHeight - menuHeight - 8))
   const left = Math.max(8, Math.min(rawLeft, window.innerWidth - menuWidth - 8))
+
+  /** Localized label for one quick-jump root kind. */
+  const localRootLabel = (kind: LocalRoot['kind']): string => {
+    switch (kind) {
+      case 'home': return tt('flow.root.home')
+      case 'app-data': return tt('flow.root.app-data')
+      case 'documents': return tt('flow.root.documents')
+      case 'storage': return tt('flow.root.storage')
+      case 'downloads': return tt('flow.root.downloads')
+    }
+  }
+
+  const localCrumbParent = localListing !== null && localListing.crumbs.length >= 2
+    ? localListing.crumbs[localListing.crumbs.length - 2].path
+    : undefined
 
   return createPortal(
     <div
@@ -542,6 +714,124 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Local browse mode (Android always; any host whose directory
+            picker serves the `browse` capability). The kernel's native
+            chooser does not exist there, so the picker drives listing calls
+            instead of pretending the missing capability is present. */}
+        {choice === 'local-browsing' && (
+          <div className={css.dialogGrid} style={{ gridTemplateColumns: '1fr' }} data-test="local-browser">
+            <div className={css.field} style={{ gridColumn: '1' }}>
+              <span>{tt('flow.localBrowse')}</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className={css.button}
+                  disabled={loading || localCrumbParent === undefined}
+                  onClick={() => { if (localCrumbParent !== undefined) void browseLocal(localCrumbParent) }}
+                >
+                  {tt('flow.localUp')}
+                </button>
+                <input
+                  className={css.input}
+                  data-test="local-path"
+                  value={localPathInput}
+                  disabled={loading}
+                  spellCheck={false}
+                  placeholder="/storage/emulated/0/Documents"
+                  onChange={(event) => setLocalPathInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void browseLocal(localPathInput.trim() === '' ? undefined : localPathInput.trim())
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className={css.button}
+                  disabled={loading}
+                  onClick={() => void browseLocal(localPathInput.trim() === '' ? undefined : localPathInput.trim())}
+                >
+                  {tt('flow.localOpen')}
+                </button>
+              </div>
+              <span className={css.hint}>{tt('flow.localPathHint')}</span>
+            </div>
+
+            {localRoots.length > 0 && (
+              <div style={{ gridColumn: '1', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {localRoots.map((root) => (
+                  <button
+                    key={`${root.kind}:${root.path}`}
+                    type="button"
+                    className={css.ghostButton}
+                    disabled={loading}
+                    title={root.path}
+                    onClick={() => void browseLocal(root.path)}
+                  >
+                    {localRootLabel(root.kind)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {localListing !== null && localListing.crumbs.length > 0 && (
+              <div style={{ gridColumn: '1', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {localListing.crumbs.slice(-4).map((crumb) => (
+                  <button
+                    key={`${crumb.path}:${crumb.name}`}
+                    type="button"
+                    className={css.ghostButton}
+                    disabled={loading}
+                    title={crumb.path}
+                    onClick={() => void browseLocal(crumb.path)}
+                  >
+                    {crumb.name === '' ? crumb.path : crumb.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div style={{ gridColumn: '1', maxHeight: 240, overflow: 'auto', border: '1px solid var(--aion-border, rgba(128,128,128,0.25))', borderRadius: 8, padding: 6 }}>
+              {loading && <div className={css.dialogInfo} role="status">{tt('flow.localLoading')}</div>}
+              {!loading && localListing !== null && localListing.entries.length === 0 && (
+                <div className={css.dialogInfo}>{tt('flow.localEmpty')}</div>
+              )}
+              {!loading && localListing?.entries.map((entry) => (
+                <button
+                  key={entry.path}
+                  type="button"
+                  className={css.hostRow}
+                  disabled={loading}
+                  style={{ width: '100%', textAlign: 'left', display: 'flex', gap: 6, alignItems: 'center', border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 6px' }}
+                  onClick={() => void browseLocal(entry.path)}
+                >
+                  <span aria-hidden="true">📁</span>
+                  <span className={css.hostAlias}>{entry.name}</span>
+                </button>
+              ))}
+              {!loading && localListing?.truncated === true && (
+                <div className={css.hint}>{tt('flow.localTruncated')}</div>
+              )}
+            </div>
+
+            <div className={css.dialogActions} style={{ gridColumn: '1' }}>
+              <button type="button" className={css.button} disabled={loading} onClick={() => setChoice('menu')}>
+                {tt('create.cancel')}
+              </button>
+              <button
+                type="button"
+                className={`${css.button} ${css.buttonPrimary}`}
+                data-test="local-use"
+                disabled={loading || (localListing === null && localPathInput.trim() === '')}
+                onClick={useLocalDir}
+              >
+                {tt('flow.useThisDir')}
+              </button>
+            </div>
           </div>
         )}
 

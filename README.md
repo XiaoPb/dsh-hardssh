@@ -187,6 +187,45 @@ NPM 包页面：https://www.npmjs.com/package/@tiphareth/dsh-hardssh
     secretStorage: none   # 或 vault
 ```
 
+## Android：本地目录与 SSH 私钥
+
+### 本地目录选择
+
+Android 没有系统文件夹对话框，DSH 内核只提供 `browse` 能力。0.2.8 起本插件会自动探测：
+
+- 只有 `browse` → 打开应用内目录浏览器（可输入绝对路径，带 Home / 内部存储 / Documents 快捷入口）；
+- 只有 `native` → 仍弹桌面系统选择框。
+
+如果读取 `/storage/emulated/0` 被拒，请在 DSH Mobile 的「设置 → 权限中心」授予**所有文件访问**。
+
+### 私钥放哪里、路径怎么填
+
+推荐直接在主机表单里操作，不需要手动找路径：
+
+1. **导入私钥**：认证方式选「密钥」→ 点「导入私钥」→ 选择 `id_ed25519` / `.pem`。
+   私钥会写到应用私有目录（0700/0600），路径自动填入：
+
+   ```text
+   /data/user/0/app.dsh.mobile/files/dsh-home/.ssh/<文件名>
+   ```
+
+2. **生成新密钥**：点「生成新密钥」→ 生成 Ed25519 密钥对，表单显示**公钥**。
+   复制整行追加到服务器：
+
+   ```bash
+   echo 'ssh-ed25519 AAAA... dsh-hardssh' >> ~/.ssh/authorized_keys
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+
+需要手动放置时，优先放公开数据目录（App 会自动创建 `ssh/`）：
+
+```text
+/storage/emulated/0/Documents/dshdata/ssh/id_ed25519
+```
+
+表单的「私钥路径」填这个**绝对路径**即可；放在默认搜索目录时新建主机也会自动预填。
+Android 没有 ssh-agent，留空只对“默认密钥文件”有效。
+
 ## 主机命令守卫（可选）
 
 **用途**：某些服务器不允许直接跑重活（典型是 Slurm 集群的**登录节点**：只能提交作业，不能就地计算）。给这台主机配一组「禁止命令」后，agent/工具尝试执行会被**拦下并显示你写的提示**，把它引导到正确的提交方式。

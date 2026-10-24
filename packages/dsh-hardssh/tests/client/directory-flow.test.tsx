@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DirectoryFlow, type DirectoryFlowInjected } from '../../src/client/directory-flow.tsx'
+import { DirectoryFlow, isNativeCapabilityError, type DirectoryFlowInjected } from '../../src/client/directory-flow.tsx'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -88,35 +88,40 @@ describe('DirectoryFlow request sequencing', () => {
   })
 })
 
-describe('DirectoryFlow local branch robustness', () => {
-  /** Mount the flow open, with the given picker behaviour, and return helpers. */
-  async function mount(pickDirectory: DirectoryFlowInjected['pickDirectory'], withOnError = true) {
-    const injected: DirectoryFlowInjected = {
-      pickDirectory,
-      createSshWorkspace: vi.fn(),
-      listHosts: vi.fn(async () => []),
-      createHost: vi.fn(),
-      listRemoteDir: vi.fn(),
-      ensureConnected: vi.fn(async () => true),
-    }
-    const onError = vi.fn()
-    const onPicked = vi.fn()
-    const onCancel = vi.fn()
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const root = createRoot(container)
-    const props = {
-      open: true,
-      busy: false,
-      onPicked,
-      onCancel,
-      ...(withOnError ? { onError } : {}),
-    }
-    await act(async () => { root.render(<DirectoryFlow {...props} {...injected} />) })
-    const menu = () => document.querySelector<HTMLElement>('[data-ssh-workspace-flow-menu]')!
-    return { root, menu, onError, onPicked, onCancel }
+/** Mount the flow open, with the given picker behaviour, and return helpers. */
+async function mount(
+  pickDirectory: DirectoryFlowInjected['pickDirectory'],
+  withOnError = true,
+  extra: Partial<DirectoryFlowInjected> = {},
+) {
+  const injected: DirectoryFlowInjected = {
+    pickDirectory,
+    createSshWorkspace: vi.fn(),
+    listHosts: vi.fn(async () => []),
+    createHost: vi.fn(),
+    listRemoteDir: vi.fn(),
+    ensureConnected: vi.fn(async () => true),
+    ...extra,
   }
+  const onError = vi.fn()
+  const onPicked = vi.fn()
+  const onCancel = vi.fn()
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  const props = {
+    open: true,
+    busy: false,
+    onPicked,
+    onCancel,
+    ...(withOnError ? { onError } : {}),
+  }
+  await act(async () => { root.render(<DirectoryFlow {...props} {...injected} />) })
+  const menu = () => document.querySelector<HTMLElement>('[data-ssh-workspace-flow-menu]')!
+  return { root, menu, onError, onPicked, onCancel }
+}
 
+describe('DirectoryFlow local branch robustness', () => {
   it('shows a visible waiting state instead of an empty dropdown while the picker is open', async () => {
     const pending = deferred<string | null>()
     const { root, menu } = await mount(() => pending.promise)
@@ -180,5 +185,81 @@ describe('DirectoryFlow local branch robustness', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(onPicked).not.toHaveBeenCalled()
     await act(async () => { root.unmount() })
+  })
+})
+
+describe('DirectoryFlow browse capability (Android / browse-only host)', () => {
+  const flush = async (): Promise<void> => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+  }
+
+  const listing = (path = '/storage/emulated/0') => ({
+    path,
+    home: '/data/user/0/app.dsh.mobile/files/dsh-home',
+    crumbs: [{ name: '/', path: '/', hidden: false }, { name: path, path, hidden: false }],
+    entries: [{ name: 'Documents', path: `${path}/Documents`, hidden: false }],
+    truncated: false,
+  })
+
+  it('uses the kernel browse listing instead of calling the missing native picker', async () => {
+    const listLocalDir = vi.fn(async () => listing())
+    const pickDirectory = vi.fn(async () => '/native/should-not-run')
+    const { root, menu, onPicked } = await mount(pickDirectory, true, {
+      listLocalDir,
+      listLocalRoots: async () => [{ kind: 'storage', path: '/storage/emulated/0' }],
+    })
+
+    await act(async () => { menu().querySelectorAll<HTMLButtonElement>('button')[0].click() })
+    await flush()
+
+    expect(menu().querySelector('[data-test="local-browser"]')).not.toBeNull()
+    expect(pickDirectory).not.toHaveBeenCalled()
+    expect(listLocalDir).toHaveBeenCalledWith(undefined)
+
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="local-use"]')!.click() })
+    expect(onPicked).toHaveBeenCalledWith('/storage/emulated/0')
+    await act(async () => { root.unmount() })
+  })
+
+  it('falls back to the native picker only when the host serves the native capability', async () => {
+    const listLocalDir = vi.fn(async () => {
+      throw { rpcError: { code: 'directory-picker/unavailable', details: { capability: 'native' } } }
+    })
+    const pickDirectory = vi.fn(async () => '/tmp/picked')
+    const { root, menu, onPicked } = await mount(pickDirectory, true, { listLocalDir })
+
+    await act(async () => { menu().querySelectorAll<HTMLButtonElement>('button')[0].click() })
+    await flush()
+
+    expect(listLocalDir).toHaveBeenCalledTimes(1)
+    expect(pickDirectory).toHaveBeenCalledTimes(1)
+    expect(onPicked).toHaveBeenCalledWith('/tmp/picked')
+    await act(async () => { root.unmount() })
+  })
+
+  it('falls back to native on a legacy kernel without the browse verb', async () => {
+    const listLocalDir = vi.fn(async () => {
+      throw { code: 'dsh-hardssh/no-browse' }
+    })
+    const pickDirectory = vi.fn(async () => '/legacy/picked')
+    const { root, menu, onPicked } = await mount(pickDirectory, true, { listLocalDir })
+
+    await act(async () => { menu().querySelectorAll<HTMLButtonElement>('button')[0].click() })
+    await flush()
+
+    expect(pickDirectory).toHaveBeenCalledTimes(1)
+    expect(onPicked).toHaveBeenCalledWith('/legacy/picked')
+    await act(async () => { root.unmount() })
+  })
+
+  it('recognises only the native-capability refusal as a native fallback signal', () => {
+    expect(isNativeCapabilityError({
+      rpcError: { code: 'directory-picker/unavailable', details: { capability: 'native' } },
+    })).toBe(true)
+    expect(isNativeCapabilityError({
+      rpcError: { code: 'directory-picker/unavailable', details: { capability: 'browse' } },
+    })).toBe(false)
+    expect(isNativeCapabilityError(new Error('EACCES'))).toBe(false)
+    expect(isNativeCapabilityError(undefined)).toBe(false)
   })
 })

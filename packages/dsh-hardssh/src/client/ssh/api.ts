@@ -11,6 +11,9 @@ import {
   type HardsshHealthSnapshot,
   type HostPayload,
   type ImportResult,
+  type KeyGenerateResult,
+  type KeyImportResult,
+  type KeyInfoView,
   type KnownHostAction,
   type KnownHostView,
   type RemoteDirEntry,
@@ -119,6 +122,33 @@ export class SshApi {
     const response = await fetch(SSH_API.importSshConfig, { method: 'POST' })
     const body = await readJson<{ result: ImportResult }>(response)
     return body.result
+  }
+
+  // ---------------------------------------------------------------- keys
+  /** Default-key discovery info for the host form (no secret material). */
+  async keyInfo(): Promise<KeyInfoView> {
+    const response = await fetch(SSH_API.keyInfo)
+    return await readJson<KeyInfoView>(response)
+  }
+
+  /** Store a private key selected in the browser's file picker. */
+  async importKey(name: string, content: string): Promise<KeyImportResult> {
+    const response = await fetch(SSH_API.keyImport, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, content }),
+    })
+    return await readJson<KeyImportResult>(response)
+  }
+
+  /** Generate a new Ed25519 key pair and return its OpenSSH public line. */
+  async generateKey(name?: string): Promise<KeyGenerateResult> {
+    const response = await fetch(SSH_API.keyGenerate, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(name === undefined || name === '' ? {} : { name }),
+    })
+    return await readJson<KeyGenerateResult>(response)
   }
 
   // ---------------------------------------------------------------- ops

@@ -75,7 +75,19 @@ export const WORKSPACE_API = {
   state: WORKSPACE_API_BASE + '/state',
   sshWorkspaces: WORKSPACE_API_BASE + '/ws',
   sshWorkspaceDir: WORKSPACE_API_BASE + '/ws/dir',
+  localRoots: WORKSPACE_API_BASE + '/local/roots',
 } as const
+
+/** Well-known local directory roots offered by the in-app picker. */
+export type LocalRootKind = 'home' | 'app-data' | 'documents' | 'storage' | 'downloads'
+
+/** One quick-jump directory root for the local workspace browser. */
+export interface LocalRoot {
+  /** Stable identity; the client owns its localized label. */
+  kind: LocalRootKind
+  /** Absolute host path. */
+  path: string
+}
 
 /**
  * One SSH-bound workspace: a local anchor directory (the host-visible

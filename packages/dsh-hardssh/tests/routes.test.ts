@@ -408,6 +408,19 @@ describe('A-04: host-workspace registration is transactional (compensation + rec
   })
 })
 
+describe('local picker roots over the /api/dsh-hardssh surface', () => {
+  it('answers the homedir root and rejects non-GET methods', async () => {
+    const response = await get(WORKSPACE_API.localRoots)
+    expect(response.status).toBe(200)
+    const body = JSON.parse(response.text) as { roots: Array<{ kind: string; path: string }> }
+    expect(body.roots[0]).toEqual({ kind: 'home', path: expect.any(String) })
+    expect(body.roots[0]!.path.length).toBeGreaterThan(0)
+
+    const post = await send('POST', WORKSPACE_API.localRoots, {})
+    expect(post.status).toBe(405)
+  })
+})
+
 describe('host-delete reference guard over the generic record source', () => {
   it('refuses deleting a host still backing a generic SSH workspace, then allows it after removal', async () => {
     // Re-create one workspace bound to alias 'host' via the generic surface.

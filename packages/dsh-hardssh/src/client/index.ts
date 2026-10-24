@@ -25,7 +25,7 @@ import { WorkspaceManager } from './state.ts'
 import { setLanguage, tt } from './text.ts'
 import { registerWorkspacePanel } from './workspace-panel-entry.tsx'
 import { migrateLegacySessionMemory } from './migrate.ts'
-import { DirectoryFlow } from './directory-flow.tsx'
+import { DirectoryFlow, NO_BROWSE_ERROR_CODE } from './directory-flow.tsx'
 import { connectHost, subscribeConnectState } from './connect-host.ts'
 import { mountWorkspaceBadges } from './workspace-badges.ts'
 import { mountWorkspaceFilesPathRemap } from './workspace-files-path.ts'
@@ -68,12 +68,25 @@ export const inject = ['slots', 'locale', 'sessions', 'sidebarRightTabs']
  * `picking-local` state and rendered an EMPTY dropdown (the "narrow white box"
  * users saw). Resolve both names lazily and report a usable error when neither
  * exposes the picker, so the failure is visible instead of silent.
+ *
+ * 0.2.x splits picking into a discriminated capability: `native` exposes
+ * `pickDirectory()` while `browse` exposes `listDirectory()` (Android is
+ * always browse). Both halves are surfaced so the flow can pick the one the
+ * host actually serves.
  */
-function resolveDirectoryPicker(ctx: ClientContext): { pickDirectory: () => Promise<string> } | undefined {
+interface DirectoryPickerService {
+  pickDirectory?: () => Promise<string | null>
+  listDirectory?: (path?: string) => Promise<unknown>
+}
+
+function resolveDirectoryPicker(ctx: ClientContext): DirectoryPickerService | undefined {
   for (const name of ['uiWorkspace', 'workspaces']) {
-    const service = (ctx.get as (key: string) => unknown)(name) as { pickDirectory?: unknown } | undefined
-    if (service !== undefined && typeof service.pickDirectory === 'function') {
-      return service as { pickDirectory: () => Promise<string> }
+    const service = (ctx.get as (key: string) => unknown)(name) as DirectoryPickerService | undefined
+    if (
+      service !== undefined
+      && (typeof service.pickDirectory === 'function' || typeof service.listDirectory === 'function')
+    ) {
+      return service
     }
   }
   return undefined
@@ -136,9 +149,23 @@ export function apply(ctx: ClientContext): void {
     const flowInject = (): Record<string, unknown> => ({
       pickDirectory: async () => {
         const picker = resolveDirectoryPicker(ctx)
-        if (picker === undefined) throw new Error(tt('flow.noPicker'))
+        if (picker?.pickDirectory === undefined) throw new Error(tt('flow.noPicker'))
         return await picker.pickDirectory()
       },
+      // 0.2.x browse capability: listing (and optional creation) for the
+      // in-app local-directory browser used when no OS chooser exists.
+      listLocalDir: async (path?: string) => {
+        const picker = resolveDirectoryPicker(ctx)
+        if (picker?.listDirectory === undefined) {
+          // Old/legacy kernel: no browse verb. The flow sees this marker and
+          // falls back to the native picker instead of reporting a dead end.
+          const error = new Error(tt('flow.noPicker')) as Error & { code: string }
+          error.code = NO_BROWSE_ERROR_CODE
+          throw error
+        }
+        return await picker.listDirectory(path)
+      },
+      listLocalRoots: () => api.listLocalRoots(),
       createSshWorkspace: (input: { title: string; alias: string; remoteRoot: string }) => api.createWorkspace(input),
       listHosts: () => api.listHosts(),
       createHost: (input: {

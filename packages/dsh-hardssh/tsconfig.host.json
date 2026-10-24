@@ -43,6 +43,7 @@
     "src/tools.ts",
     "src/workspace-tool-ops.ts",
     "src/remote-search.ts",
+    "src/platform.ts",
     "src/ssh/**/*.ts",
     "src/remote/**/*.ts",
     "src/switch/**/*.ts"

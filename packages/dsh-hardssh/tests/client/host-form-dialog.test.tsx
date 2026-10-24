@@ -31,7 +31,7 @@ const host = (overrides: Partial<SshHostSummary> = {}): SshHostSummary => ({
 
 function render(
   editing: SshHostSummary | null,
-  api: { updateHost: ReturnType<typeof vi.fn>; createHost: ReturnType<typeof vi.fn> },
+  api: Record<string, unknown>,
 ): { onSaved: ReturnType<typeof vi.fn> } {
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -111,5 +111,44 @@ describe('HostFormDialog commandPolicy', () => {
       denyCommands: ['python', 'Rscript'],
       allowCommands: ['sbatch', 'srun'],
     })
+  })
+})
+
+describe('HostFormDialog key discovery', () => {
+  const keyInfo = (overrides: Record<string, unknown> = {}) => ({
+    home: '/home/u',
+    keysDir: '/home/u/.ssh',
+    searchDirs: ['/home/u/.ssh'],
+    android: true,
+    ...overrides,
+  })
+
+  it('pre-fills the discovered default key on a new host', async () => {
+    render(null, {
+      updateHost: vi.fn(),
+      createHost: vi.fn(),
+      keyInfo: vi.fn(async () => keyInfo({ defaultKeyPath: '/home/u/.ssh/id_ed25519' })),
+    })
+    await flush()
+    expect(document.querySelector<HTMLInputElement>('[data-test="key-path"]')!.value).toBe('/home/u/.ssh/id_ed25519')
+  })
+
+  it('generates a key and shows its public line', async () => {
+    const generateKey = vi.fn(async () => ({
+      path: '/home/u/.ssh/id_ed25519-2',
+      publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA dsh-hardssh',
+    }))
+    render(null, {
+      updateHost: vi.fn(),
+      createHost: vi.fn(),
+      keyInfo: vi.fn(async () => keyInfo()),
+      generateKey,
+    })
+    await flush()
+    act(() => { document.querySelector<HTMLButtonElement>('[data-test="key-generate"]')!.click() })
+    await flush()
+    expect(generateKey).toHaveBeenCalledWith('id_ed25519')
+    expect(document.querySelector<HTMLInputElement>('[data-test="key-path"]')!.value).toBe('/home/u/.ssh/id_ed25519-2')
+    expect(document.querySelector<HTMLTextAreaElement>('[data-test="public-key"]')!.value).toContain('ssh-ed25519 ')
   })
 })
