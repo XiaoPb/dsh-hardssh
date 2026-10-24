@@ -826,7 +826,7 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
                 type="button"
                 className={`${css.button} ${css.buttonPrimary}`}
                 data-test="local-use"
-                disabled={loading || (localListing === null && localPathInput.trim() === '')}
+                disabled={busy || loading || (localListing === null && localPathInput.trim() === '')}
                 onClick={useLocalDir}
               >
                 {tt('flow.useThisDir')}
