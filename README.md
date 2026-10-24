@@ -1,13 +1,13 @@
 # dsh-hardssh
 
 [![version](https://img.shields.io/badge/version-0.2.7-4D6BFE)](CHANGELOG.md)
-[![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.0-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
+[![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-7a3ef3)](https://github.com/topics/dsh-plugin)
 
 **中文** · [English](./README.en.md)
 
-**【DeepSeek Harness (DSH) 的 SSH 工作区 + SSH 运维插件】** · 已适配 DSH **0.1.5 ~ 0.2.0**，**含官方桌面版（Electron）**
+**【DeepSeek Harness (DSH) 的 SSH 工作区 + SSH 运维插件】** · 已适配 DSH **0.1.5 ~ 0.2.1**，**含官方桌面版（Electron）与 Android 端**
 
 把服务器上的任意目录变成 **SSH 工作区**：绑定后，该会话里的文件读写与命令执行**透明地运行在远端主机**，
 你和 agent 都像在操作本机一样工作——同时提供完整的 SSH 运维面板（终端、传输、隧道、命令）。
@@ -102,7 +102,7 @@ WorkspaceRecord / WorkspaceProvider / WorkspaceConnection / 能力(capability)
 
 ## 安装
 
-已发布到 npm，但**当前最新的 npm 版本是预发布版 `0.2.6-alpha`**（稳定版仍是 `0.2.5`）；本仓库已经到 **`0.2.7`**（含 dsh 0.2.0 / 桌面版支持），**尚未发布到 npm**——请用下面的源码方式安装：
+已发布到 npm，但**当前最新的 npm 版本是预发布版 `0.2.6-alpha`**（稳定版仍是 `0.2.5`）；本仓库已经到 **`0.2.8`**（含 dsh 0.2.0/0.2.1、桌面版与 Android 端支持），**尚未发布到 npm**——请用下面的源码方式安装：
 
 ```sh
 # 源码链接（推荐：改码后重建 lib/ 并重启 dsh 即生效，无需重新打包）
@@ -148,8 +148,8 @@ NPM 包页面：https://www.npmjs.com/package/@tiphareth/dsh-hardssh
 
 | 插件版本 | 已验证 DSH | Node | 远端主机 |
 |---|---|---|---|
-| `0.2.7`（当前） | **`0.2.0-rc.2`（桌面版 Electron 实测）** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（0.1.x 矩阵四条线全绿：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
-| `0.2.5` ~ `0.2.6-alpha` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（同上四条线） | 同上 | 同上 |
+| `0.2.8`（当前） | **`0.2.0-rc.2`（桌面版 Electron）+ `0.2.1-rc.2`（Android runtime）实测** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（0.1.x 矩阵四条线全绿：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
+| `0.2.5` ~ `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（同上四条线） | 同上 | 同上 |
 
 > 0.2.0 线的说明：宿主侧（插件激活、路由、工作区注册进官方 `ctx.workspace`）已在 **桌面版 0.2.0-rc.2** 上实测通过；客户端会话跟随已按 0.2.0 的新会话 API（`retainedBy.mainView`）适配。0.1.x 的四条线由 `compat/dsh-*.json` 兼容集与 CI 矩阵保证；**0.2.0 的兼容集尚未加入矩阵**（见 `compat/README.md` 的约定）。
 

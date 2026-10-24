@@ -1,13 +1,13 @@
 # dsh-hardssh
 
-[![version](https://img.shields.io/badge/version-0.2.7-4D6BFE)](CHANGELOG.md)
-[![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.0-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
+[![version](https://img.shields.io/badge/version-0.2.8-4D6BFE)](CHANGELOG.md)
+[![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-7a3ef3)](https://github.com/topics/dsh-plugin)
 
 **English** · [中文](./README.md)
 
-**SSH workspace + SSH operations plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).** Supports DSH **0.1.5 – 0.2.0**, **including the official Desktop (Electron) app**.
+**SSH workspace + SSH operations plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).** Supports DSH **0.1.5 – 0.2.1**, **including the official Desktop (Electron) app and Android runtime**.
 
 Turn any directory on a server into an **SSH workspace**: once bound, file I/O and
 command execution in that session run **transparently on the remote host** — you and
@@ -161,8 +161,8 @@ workspace**; there is no host dropdown:
 ## Install
 
 The package is on npm, but **the newest npm version is the pre-release `0.2.6-alpha`**
-(the stable release is still `0.2.5`). This checkout is **`0.2.7`**, which adds dsh 0.2.0
-and Desktop support, and is **not published to npm yet** — install it from source:
+(the stable release is still `0.2.5`). This checkout is **`0.2.8`**, which adds dsh 0.2.0/0.2.1,
+Desktop, and Android support, and is **not published to npm yet** — install it from source:
 
 ```sh
 # source link (recommended: rebuild lib/ after edits and restart dsh; no re-packing)
@@ -170,10 +170,10 @@ dsh plugin --profile web add link:</path/to/dsh-hardssh>/packages/dsh-hardssh
 
 # or pack a tarball first
 pnpm --filter @tiphareth/dsh-hardssh pack --pack-destination dist
-dsh plugin --profile web add </path/to/dsh-hardssh>/dist/tiphareth-dsh-hardssh-0.2.7.tgz
+dsh plugin --profile web add </path/to/dsh-hardssh>/dist/tiphareth-dsh-hardssh-0.2.8.tgz
 
 # what npm can give you today (0.2.6-alpha pre-release / 0.2.5 stable); without the
-# 0.2.0 and Desktop support added in 0.2.7
+# 0.2.0 / Desktop / Android support added in 0.2.8
 dsh plugin --profile web add @tiphareth/dsh-hardssh@0.2.6-alpha
 dsh plugin --profile web add @tiphareth/dsh-hardssh
 ```
@@ -230,8 +230,8 @@ npm package page: https://www.npmjs.com/package/@tiphareth/dsh-hardssh
 
 | Plugin | Verified DSH | Node | Remote hosts |
 |---|---|---|---|
-| `0.2.7` (current) | **`0.2.0-rc.2` (verified on the Desktop/Electron app)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (four 0.1.x matrix lines green: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
-| `0.2.5` – `0.2.6-alpha` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (the same four lines) | same | same |
+| `0.2.8` (current) | **`0.2.0-rc.2` (Desktop/Electron) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (four 0.1.x matrix lines green: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
+| `0.2.5` – `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (the same four lines) | same | same |
 
 > About the 0.2.0 line: the host half (plugin activation, routes, workspace registration into the official `ctx.workspace`) was verified on the **Desktop app running dsh 0.2.0-rc.2**, and the client session-follow was ported to the 0.2.0 session API (`retainedBy.mainView`). The four 0.1.x lines are covered by the `compat/dsh-*.json` sets and the CI matrix; **a 0.2.0 compat set is not in the matrix yet** (see the rules in `compat/README.md`).
 
