@@ -28,7 +28,7 @@ import type { DirectoryFlowOwnerProps } from '@deepseek-ai/dsh-client-ui-workspa
 import type { LocalRoot, SshWorkspaceRecord } from '../protocol.ts'
 import { tt } from './text.ts'
 import css from './workspace.module.css'
-import { CloudIcon, ComputerIcon } from './icons.tsx'
+import { CloudIcon, ComputerIcon, ArrowRightIcon, CheckIcon, ChevronRightIcon, ChevronUpIcon, FolderIcon, FolderPlusIcon, LocalRootIcon } from './icons.tsx'
 import { checkLocalWorkspacePath } from './local-workspace-path.ts'
 
 /** One directory row returned by the kernel's browse capability. */
@@ -69,12 +69,33 @@ export function isNoBrowseError(error: unknown): boolean {
   return (error as { code?: unknown } | null)?.code === NO_BROWSE_ERROR_CODE
 }
 
+/** Marker code for a kernel whose browse backend cannot create directories. */
+export const NO_CREATE_ERROR_CODE = 'dsh-hardssh/no-create-dir'
+
+/** True when the injected browse adapter reported "no create method". */
+export function isNoCreateError(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === NO_CREATE_ERROR_CODE
+}
+
+/** Human-readable message from an RPC failure object or a plain error. */
+function reasonText(reason: unknown): string {
+  const record = reason as { rpcError?: { message?: unknown }; message?: unknown } | null
+  const rpc = record?.rpcError
+  if (rpc !== null && typeof rpc === 'object' && typeof rpc.message === 'string' && rpc.message !== '') {
+    return rpc.message
+  }
+  if (reason instanceof Error) return reason.message
+  return String(reason)
+}
+
 /** The injected face: host native picker + our workspace manager API. */
 export interface DirectoryFlowInjected {
   /** Ask the local Host to open its native single-directory chooser. */
   pickDirectory: () => Promise<string | null>
   /** List one local directory level through the kernel's browse capability. */
   listLocalDir?: (path?: string) => Promise<LocalDirectoryListing>
+  /** Create one local subdirectory through the kernel's browse capability. */
+  createLocalDir?: (path: string, name: string) => Promise<string>
   /** Quick-jump roots for the local browser. */
   listLocalRoots?: () => Promise<LocalRoot[]>
   /** Create an SSH workspace (host API). */
@@ -188,6 +209,14 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Local browser: inline "new folder" composer (Android hosts have no OS
+  // dialog for it, and the browse capability exposes createDirectory).
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [newFolderError, setNewFolderError] = useState<string | null>(null)
+  const [newFolderBusy, setNewFolderBusy] = useState(false)
+  const [createdName, setCreatedName] = useState<string | null>(null)
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>())
   const [anchor, setAnchor] = useState<AnchorRect | undefined>(undefined)
   // "Add server…" mini-form inside the SSH branch.
   const [addingHost, setAddingHost] = useState(false)
@@ -200,6 +229,24 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
   const directoryRequestSequence = useRef(0)
   const createWorkspaceRequestSequence = useRef(0)
   const createHostRequestSequence = useRef(0)
+
+  // The panel geometry (top / menuHeight) derives from window.innerHeight
+  // inside the render. A soft keyboard opening, a rotation or a split-screen
+  // resize would otherwise leave a stale height behind and push the footer
+  // (and the new-folder input) below the visible viewport. Bump a render epoch
+  // so the derived geometry is recomputed; the local browser's flexible list
+  // then absorbs the difference.
+  const [, setViewportEpoch] = useState(0)
+  useEffect(() => {
+    if (!open) return
+    const onResize = (): void => setViewportEpoch((value) => value + 1)
+    window.addEventListener('resize', onResize)
+    window.visualViewport?.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.visualViewport?.removeEventListener('resize', onResize)
+    }
+  }, [open])
 
   // Reset and re-locate on each open edge. Every async data source owns a
   // request sequence; cleanup invalidates outstanding work from this opening.
@@ -217,6 +264,11 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
     setCreating(false)
     setSavingHost(false)
     setError(null)
+    setNewFolderOpen(false)
+    setNewFolderName('')
+    setNewFolderError(null)
+    setNewFolderBusy(false)
+    setCreatedName(null)
     setAddingHost(false)
     setNewHost({ alias: '', host: '', port: '22', user: '', password: '' })
     setAnchorRect()
@@ -246,6 +298,35 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
       createHostRequestSequence.current += 1
     }
   }, [open])
+
+  // A successful create lands in the refreshed listing: scroll the new row
+  // into view and flash it so the operator sees what was created. The effect
+  // re-runs when the re-listed level arrives (a name the host sorted away or
+  // truncated simply never flashes).
+  useEffect(() => {
+    if (createdName === null) return
+    const row = rowRefs.current.get(createdName)
+    if (row !== undefined && typeof row.scrollIntoView === 'function') {
+      try {
+        row.scrollIntoView({ block: 'nearest' })
+      } catch {
+        /* jsdom and some older webviews do not implement smooth scrolling */
+      }
+    }
+  }, [createdName, localListing])
+
+  useEffect(() => {
+    if (createdName === null) return
+    const timer = window.setTimeout(() => setCreatedName(null), 2200)
+    return () => window.clearTimeout(timer)
+  }, [createdName])
+
+  // Leaving the local browser retires the inline composer with it.
+  useEffect(() => {
+    if (choice === 'local-browsing') return
+    setNewFolderOpen(false)
+    setNewFolderError(null)
+  }, [choice])
 
   /** Locate the trigger element that just opened the flow and anchor the menu
    *  directly under it. Priority: the focused element (the button the operator
@@ -454,6 +535,71 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
     commitLocalPath(path, true)
   }
 
+  /** Close the inline new-folder composer without creating anything. */
+  const closeNewFolder = (): void => {
+    if (newFolderBusy) return
+    setNewFolderOpen(false)
+    setNewFolderName('')
+    setNewFolderError(null)
+  }
+
+  /** Open the inline new-folder composer for the listed level. */
+  const openNewFolder = (): void => {
+    if (localListing === null || props.createLocalDir === undefined) return
+    setNewFolderName('')
+    setNewFolderError(null)
+    setNewFolderOpen(true)
+  }
+
+  /**
+   * Create the named folder inside the LISTED level (not the typed draft) and
+   * re-list it, flashing the new row.
+   *
+   * Validation mirrors what the host rejects anyway, but happens inline so the
+   * operator gets immediate copy instead of an RPC failure. A kernel whose
+   * browse backend has no create verb surfaces `flow.newFolderNoService`
+   * through the `dsh-hardssh/no-create-dir` marker.
+   */
+  const confirmNewFolder = async (): Promise<void> => {
+    if (newFolderBusy) return
+    const name = newFolderName.trim()
+    if (name === '') {
+      setNewFolderError(tt('flow.newFolderNeedName'))
+      return
+    }
+    if (/[\\/]/.test(name) || name === '.' || name === '..') {
+      setNewFolderError(tt('flow.newFolderInvalidName'))
+      return
+    }
+    const parent = localListing?.path
+    if (parent === undefined) {
+      setNewFolderError(tt('flow.emptyPath'))
+      return
+    }
+    if (props.createLocalDir === undefined) {
+      setNewFolderError(tt('flow.newFolderNoService'))
+      return
+    }
+    setNewFolderBusy(true)
+    setNewFolderError(null)
+    try {
+      await props.createLocalDir(parent, name)
+    } catch (reason: unknown) {
+      setNewFolderBusy(false)
+      setNewFolderError(
+        isNoCreateError(reason)
+          ? tt('flow.newFolderNoService')
+          : tt('flow.newFolderFailed', reasonText(reason)),
+      )
+      return
+    }
+    setNewFolderBusy(false)
+    setNewFolderOpen(false)
+    setNewFolderName('')
+    setCreatedName(name)
+    void browseLocal(parent)
+  }
+
   /** Browse a remote dir level for the SSH branch. When the connection needs
    *  a credential (host key untrusted / session password), run the interactive
    *  gate first, then retry — the operator never sees a raw "connect" error. */
@@ -585,10 +731,17 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
     ? localListing.crumbs[localListing.crumbs.length - 2].path
     : undefined
 
+  // The local browser is a fixed-height column (title + chips + list + footer)
+  // so the list scrolls internally and the actions stay visible on a phone.
+  const localBrowsing = choice === 'local-browsing'
+  // Navigation is inert while a listing is in flight or the folder composer
+  // owns the keyboard; the name input itself stays enabled.
+  const navLocked = loading || newFolderOpen || newFolderBusy
+
   return createPortal(
     <div
       ref={menuRef}
-      className={css.menuDropdown}
+      className={localBrowsing ? `${css.menuDropdown} ${css.menuDropdownPicker}` : css.menuDropdown}
       data-ssh-workspace-flow-menu=""
       role="menu"
       style={{
@@ -596,6 +749,7 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
         left,
         width: menuWidth,
         maxHeight: menuHeight,
+        height: localBrowsing ? menuHeight : undefined,
         overflowY: 'auto',
       }}
       onClick={(event) => event.stopPropagation()}
@@ -722,23 +876,27 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
             chooser does not exist there, so the picker drives listing calls
             instead of pretending the missing capability is present. */}
         {choice === 'local-browsing' && (
-          <div className={css.dialogGrid} style={{ gridTemplateColumns: '1fr' }} data-test="local-browser">
-            <div className={css.field} style={{ gridColumn: '1' }}>
-              <span>{tt('flow.localBrowse')}</span>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div className={`${css.dialogGrid} ${css.localBrowser}`} data-test="local-browser">
+            <div className={css.field}>
+              <span className={css.localTitle}>
+                <FolderIcon size={15} />
+                <span>{tt('flow.localBrowse')}</span>
+              </span>
+              <div className={css.localPathRow}>
                 <button
                   type="button"
-                  className={css.button}
-                  disabled={loading || localCrumbParent === undefined}
+                  className={css.localPathButton}
+                  disabled={navLocked || localCrumbParent === undefined}
                   onClick={() => { if (localCrumbParent !== undefined) void browseLocal(localCrumbParent) }}
                 >
-                  {tt('flow.localUp')}
+                  <ChevronUpIcon size={14} />
+                  <span>{tt('flow.localUp')}</span>
                 </button>
                 <input
-                  className={css.input}
+                  className={css.localPathInput}
                   data-test="local-path"
                   value={localPathInput}
-                  disabled={loading}
+                  disabled={navLocked}
                   spellCheck={false}
                   placeholder="/storage/emulated/0/Documents"
                   onChange={(event) => setLocalPathInput(event.target.value)}
@@ -751,51 +909,55 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
                 />
                 <button
                   type="button"
-                  className={css.button}
-                  disabled={loading}
+                  className={css.localPathButton}
+                  disabled={navLocked}
                   onClick={() => void browseLocal(localPathInput.trim() === '' ? undefined : localPathInput.trim())}
                 >
-                  {tt('flow.localOpen')}
+                  <span>{tt('flow.localOpen')}</span>
+                  <ArrowRightIcon size={14} />
                 </button>
               </div>
-              <span className={css.hint}>{tt('flow.localPathHint')}</span>
+              <span className={css.localHint}>{tt('flow.localPathHint')}</span>
             </div>
 
             {localRoots.length > 0 && (
-              <div style={{ gridColumn: '1', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              <div className={css.localChips}>
                 {localRoots.map((root) => (
                   <button
                     key={`${root.kind}:${root.path}`}
                     type="button"
-                    className={css.ghostButton}
-                    disabled={loading}
+                    className={css.localChip}
+                    disabled={navLocked}
                     title={root.path}
                     onClick={() => void browseLocal(root.path)}
                   >
-                    {localRootLabel(root.kind)}
+                    <LocalRootIcon kind={root.kind} size={13} />
+                    <span>{localRootLabel(root.kind)}</span>
                   </button>
                 ))}
               </div>
             )}
 
             {localListing !== null && localListing.crumbs.length > 0 && (
-              <div style={{ gridColumn: '1', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {localListing.crumbs.slice(-4).map((crumb) => (
-                  <button
-                    key={`${crumb.path}:${crumb.name}`}
-                    type="button"
-                    className={css.ghostButton}
-                    disabled={loading}
-                    title={crumb.path}
-                    onClick={() => void browseLocal(crumb.path)}
-                  >
-                    {crumb.name === '' ? crumb.path : crumb.name}
-                  </button>
+              <div className={css.localCrumbs}>
+                {localListing.crumbs.slice(-4).map((crumb, index) => (
+                  <span key={`${crumb.path}:${crumb.name}`} className={css.localCrumbSeat}>
+                    {index > 0 && <ChevronRightIcon size={10} className={css.localCrumbSep} />}
+                    <button
+                      type="button"
+                      className={css.localCrumb}
+                      disabled={navLocked}
+                      title={crumb.path}
+                      onClick={() => void browseLocal(crumb.path)}
+                    >
+                      {crumb.name === '' ? crumb.path : crumb.name}
+                    </button>
+                  </span>
                 ))}
               </div>
             )}
 
-            <div style={{ gridColumn: '1', maxHeight: 240, overflow: 'auto', border: '1px solid var(--aion-border, rgba(128,128,128,0.25))', borderRadius: 8, padding: 6 }}>
+            <div className={css.localList}>
               {loading && <div className={css.dialogInfo} role="status">{tt('flow.localLoading')}</div>}
               {!loading && localListing !== null && localListing.entries.length === 0 && (
                 <div className={css.dialogInfo}>{tt('flow.localEmpty')}</div>
@@ -804,33 +966,102 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
                 <button
                   key={entry.path}
                   type="button"
-                  className={css.hostRow}
-                  disabled={loading}
-                  style={{ width: '100%', textAlign: 'left', display: 'flex', gap: 6, alignItems: 'center', border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 6px' }}
+                  data-entry-name={entry.name}
+                  className={entry.name === createdName ? `${css.localRow} ${css.localRowCreated}` : css.localRow}
+                  disabled={navLocked}
+                  ref={(el) => {
+                    if (el === null) rowRefs.current.delete(entry.name)
+                    else rowRefs.current.set(entry.name, el)
+                  }}
                   onClick={() => void browseLocal(entry.path)}
                 >
-                  <span aria-hidden="true">📁</span>
-                  <span className={css.hostAlias}>{entry.name}</span>
+                  <FolderIcon size={16} className={css.localRowIcon} />
+                  <span className={css.localRowName}>{entry.name}</span>
+                  <ChevronRightIcon size={12} className={css.localRowChevron} />
                 </button>
               ))}
               {!loading && localListing?.truncated === true && (
-                <div className={css.hint}>{tt('flow.localTruncated')}</div>
+                <div className={css.localHint}>{tt('flow.localTruncated')}</div>
               )}
             </div>
 
-            <div className={css.dialogActions} style={{ gridColumn: '1' }}>
-              <button type="button" className={css.button} disabled={loading} onClick={() => setChoice('menu')}>
-                {tt('create.cancel')}
-              </button>
-              <button
-                type="button"
-                className={`${css.button} ${css.buttonPrimary}`}
-                data-test="local-use"
-                disabled={busy || loading || (localListing === null && localPathInput.trim() === '')}
-                onClick={useLocalDir}
-              >
-                {tt('flow.useThisDir')}
-              </button>
+            {newFolderError !== null && (
+              <div className={css.dialogFail} role="alert">{newFolderError}</div>
+            )}
+
+            <div className={css.localFooter}>
+              {newFolderOpen ? (
+                <>
+                  <input
+                    className={css.localNameInput}
+                    data-test="local-new-name"
+                    autoFocus
+                    value={newFolderName}
+                    disabled={newFolderBusy}
+                    spellCheck={false}
+                    placeholder={tt('flow.newFolderName')}
+                    aria-label={tt('flow.newFolderName')}
+                    onChange={(event) => {
+                      setNewFolderName(event.target.value)
+                      setNewFolderError(null)
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        void confirmNewFolder()
+                      }
+                      if (event.key === 'Escape') {
+                        event.stopPropagation()
+                        closeNewFolder()
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={css.button}
+                    disabled={newFolderBusy}
+                    onClick={closeNewFolder}
+                  >
+                    {tt('create.cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`${css.button} ${css.buttonPrimary}`}
+                    data-test="local-new-create"
+                    disabled={newFolderBusy || newFolderName.trim() === ''}
+                    onClick={() => void confirmNewFolder()}
+                  >
+                    {newFolderBusy ? tt('flow.newFolderCreating') : tt('flow.newFolderCreate')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={`${css.button} ${css.localNewFolder}`}
+                    data-test="local-new-folder"
+                    disabled={navLocked || localListing === null || props.createLocalDir === undefined}
+                    onClick={openNewFolder}
+                  >
+                    <FolderPlusIcon size={14} />
+                    <span>{tt('flow.newFolder')}</span>
+                  </button>
+                  <span className={css.localFooterSpacer} />
+                  <button type="button" className={css.button} disabled={navLocked} onClick={() => setChoice('menu')}>
+                    {tt('create.cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`${css.button} ${css.buttonPrimary}`}
+                    data-test="local-use"
+                    disabled={busy || navLocked || (localListing === null && localPathInput.trim() === '')}
+                    onClick={useLocalDir}
+                  >
+                    <CheckIcon size={14} />
+                    <span>{tt('flow.useThisDir')}</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -880,7 +1111,7 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
                   style={{ width: '100%', textAlign: 'left', display: 'flex', gap: 6, alignItems: 'center', border: 'none', background: 'transparent', cursor: loading ? 'default' : 'pointer', padding: '4px 6px' }}
                   onClick={() => { void browse(host, `${dirPath.replace(/\/+$/, '')}/${entry.name}`) }}
                 >
-                  <span>📁</span>
+                  <FolderIcon size={16} />
                   <span className={css.hostAlias}>{entry.name}</span>
                 </button>
               ))}

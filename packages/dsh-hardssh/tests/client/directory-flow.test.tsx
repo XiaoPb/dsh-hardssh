@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DirectoryFlow, isNativeCapabilityError, type DirectoryFlowInjected } from '../../src/client/directory-flow.tsx'
+import { DirectoryFlow, isNativeCapabilityError, isNoCreateError, type DirectoryFlowInjected } from '../../src/client/directory-flow.tsx'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -261,5 +261,120 @@ describe('DirectoryFlow browse capability (Android / browse-only host)', () => {
     })).toBe(false)
     expect(isNativeCapabilityError(new Error('EACCES'))).toBe(false)
     expect(isNativeCapabilityError(undefined)).toBe(false)
+  })
+})
+
+describe('DirectoryFlow local new-folder composer', () => {
+  const flush = async (): Promise<void> => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  }
+
+  const level = (entries: Array<{ name: string; path: string; hidden: boolean }>) => ({
+    path: '/data/home',
+    home: '/data/home',
+    crumbs: [{ name: '/', path: '/', hidden: false }, { name: 'data', path: '/data', hidden: false }],
+    entries,
+    truncated: false,
+  })
+
+  /** Drive the React-controlled folder name input with the native setter. */
+  const typeName = async (menu: () => HTMLElement, value: string): Promise<void> => {
+    const input = menu().querySelector<HTMLInputElement>('[data-test="local-new-name"]')!
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      setter.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+
+  const openLocal = async (menu: () => HTMLElement): Promise<void> => {
+    await act(async () => { menu().querySelectorAll<HTMLButtonElement>('button')[0].click() })
+    await flush()
+  }
+
+  it('creates in the listed level, re-lists it and reveals the new row', async () => {
+    const before = level([{ name: 'old', path: '/data/home/old', hidden: false }])
+    const after = level([
+      { name: 'newdir', path: '/data/home/newdir', hidden: false },
+      { name: 'old', path: '/data/home/old', hidden: false },
+    ])
+    const listLocalDir = vi.fn()
+      .mockResolvedValueOnce(before)
+      .mockResolvedValueOnce(after)
+    const createLocalDir = vi.fn(async () => '/data/home/newdir')
+    const { root, menu } = await mount(async () => null, true, { listLocalDir, createLocalDir })
+
+    await openLocal(menu)
+    const newButton = menu().querySelector<HTMLButtonElement>('[data-test="local-new-folder"]')!
+    expect(newButton.disabled).toBe(false)
+    await act(async () => { newButton.click() })
+    expect(menu().querySelector('[data-test="local-new-name"]')).not.toBeNull()
+
+    await typeName(menu, 'newdir')
+    const create = menu().querySelector<HTMLButtonElement>('[data-test="local-new-create"]')!
+    expect(create.disabled).toBe(false)
+    await act(async () => { create.click() })
+    await flush()
+
+    expect(createLocalDir).toHaveBeenCalledWith('/data/home', 'newdir')
+    expect(listLocalDir).toHaveBeenLastCalledWith('/data/home')
+    // The composer closed and the re-listed row is present (the flash class is
+    // applied for 1.8s; asserting the row is enough without depending on CSS).
+    expect(menu().querySelector('[data-test="local-new-name"]')).toBeNull()
+    expect(menu().querySelector('[data-entry-name="newdir"]')).not.toBeNull()
+    await act(async () => { root.unmount() })
+  })
+
+  it('rejects an invalid name locally and keeps the host out of it', async () => {
+    const listLocalDir = vi.fn(async () => level([]))
+    const createLocalDir = vi.fn(async () => '/data/home/x')
+    const { root, menu } = await mount(async () => null, true, { listLocalDir, createLocalDir })
+    await openLocal(menu)
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="local-new-folder"]')!.click() })
+
+    await typeName(menu, 'bad/name')
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="local-new-create"]')!.click() })
+    await flush()
+
+    expect(createLocalDir).not.toHaveBeenCalled()
+    expect(menu().querySelector('[role="alert"]')?.textContent).toContain('cannot contain')
+    expect(menu().querySelector('[data-test="local-new-name"]')).not.toBeNull()
+    await act(async () => { root.unmount() })
+  })
+
+  it('keeps the composer open and shows the host message when create fails', async () => {
+    const listLocalDir = vi.fn(async () => level([]))
+    const createLocalDir = vi.fn(async () => {
+      throw { rpcError: { message: 'EEXIST: file already exists' } }
+    })
+    const { root, menu } = await mount(async () => null, true, { listLocalDir, createLocalDir })
+    await openLocal(menu)
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="local-new-folder"]')!.click() })
+
+    await typeName(menu, 'dupe')
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="local-new-create"]')!.click() })
+    await flush()
+
+    expect(createLocalDir).toHaveBeenCalledWith('/data/home', 'dupe')
+    expect(menu().querySelector('[role="alert"]')?.textContent).toContain('EEXIST')
+    expect(menu().querySelector('[data-test="local-new-name"]')).not.toBeNull()
+    // No refresh on failure: only the initial listing call happened.
+    expect(listLocalDir).toHaveBeenCalledTimes(1)
+    await act(async () => { root.unmount() })
+  })
+
+  it('disables the action when the kernel exposes no create verb', async () => {
+    const listLocalDir = vi.fn(async () => level([]))
+    const { root, menu } = await mount(async () => null, true, { listLocalDir })
+    await openLocal(menu)
+    expect(menu().querySelector<HTMLButtonElement>('[data-test="local-new-folder"]')!.disabled).toBe(true)
+    await act(async () => { root.unmount() })
+  })
+
+  it('recognises only the no-create marker as a missing capability', () => {
+    expect(isNoCreateError({ code: 'dsh-hardssh/no-create-dir' })).toBe(true)
+    expect(isNoCreateError({ code: 'dsh-hardssh/no-browse' })).toBe(false)
+    expect(isNoCreateError(new Error('EEXIST'))).toBe(false)
+    expect(isNoCreateError(undefined)).toBe(false)
   })
 })

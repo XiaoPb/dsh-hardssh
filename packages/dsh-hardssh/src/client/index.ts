@@ -25,7 +25,7 @@ import { WorkspaceManager } from './state.ts'
 import { setLanguage, tt } from './text.ts'
 import { registerWorkspacePanel } from './workspace-panel-entry.tsx'
 import { migrateLegacySessionMemory } from './migrate.ts'
-import { DirectoryFlow, NO_BROWSE_ERROR_CODE } from './directory-flow.tsx'
+import { DirectoryFlow, NO_BROWSE_ERROR_CODE, NO_CREATE_ERROR_CODE } from './directory-flow.tsx'
 import { connectHost, subscribeConnectState } from './connect-host.ts'
 import { mountWorkspaceBadges } from './workspace-badges.ts'
 import { mountWorkspaceFilesPathRemap } from './workspace-files-path.ts'
@@ -77,6 +77,8 @@ export const inject = ['slots', 'locale', 'sessions', 'sidebarRightTabs']
 interface DirectoryPickerService {
   pickDirectory?: () => Promise<string | null>
   listDirectory?: (path?: string) => Promise<unknown>
+  /** Browse backends may also create one level below a listed directory. */
+  createDirectory?: (path: string, name: string) => Promise<string>
 }
 
 function resolveDirectoryPicker(ctx: ClientContext): DirectoryPickerService | undefined {
@@ -164,6 +166,18 @@ export function apply(ctx: ClientContext): void {
           throw error
         }
         return await picker.listDirectory(path)
+      },
+      // Same capability seam, create verb: the local browser's "New folder"
+      // composer. Older browse backends expose only listing — the marker lets
+      // the dialog say so instead of surfacing a TypeError.
+      createLocalDir: async (path: string, name: string) => {
+        const picker = resolveDirectoryPicker(ctx)
+        if (picker?.createDirectory === undefined) {
+          const error = new Error(tt('flow.newFolderNoService')) as Error & { code: string }
+          error.code = NO_CREATE_ERROR_CODE
+          throw error
+        }
+        return await picker.createDirectory(path, name)
       },
       listLocalRoots: () => api.listLocalRoots(),
       createSshWorkspace: (input: { title: string; alias: string; remoteRoot: string }) => api.createWorkspace(input),

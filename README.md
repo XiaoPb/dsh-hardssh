@@ -102,7 +102,7 @@ WorkspaceRecord / WorkspaceProvider / WorkspaceConnection / 能力(capability)
 
 ## 安装
 
-已发布到 npm，但**当前最新的 npm 版本是预发布版 `0.2.6-alpha`**（稳定版仍是 `0.2.5`）；本仓库已经到 **`0.2.9`**（含 dsh 0.2.0/0.2.1、桌面版与 Android 端支持），**尚未发布到 npm**——请用下面的源码方式安装：
+已发布到 npm，但**当前最新的 npm 版本是预发布版 `0.2.6-alpha`**（稳定版仍是 `0.2.5`）；本仓库已经到 **`0.2.10`**（含 dsh 0.2.0/0.2.1、桌面版与 Android 端支持），**尚未发布到 npm**——请用下面的源码方式安装：
 
 ```sh
 # 源码链接（推荐：改码后重建 lib/ 并重启 dsh 即生效，无需重新打包）
@@ -110,7 +110,7 @@ dsh plugin --profile web add link:</path/to/dsh-hardssh>/packages/dsh-hardssh
 
 # 或先打包，再安装 tarball
 pnpm --filter @tiphareth/dsh-hardssh pack --pack-destination dist
-dsh plugin --profile web add </path/to/dsh-hardssh>/dist/tiphareth-dsh-hardssh-0.2.7.tgz
+dsh plugin --profile web add </path/to/dsh-hardssh>/dist/tiphareth-dsh-hardssh-0.2.10.tgz
 
 # npm 上能装到的（0.2.6-alpha 预发布 / 0.2.5 稳定）；这些版本尚不含 0.2.0 与桌面版适配
 dsh plugin --profile web add @tiphareth/dsh-hardssh@0.2.6-alpha
@@ -148,7 +148,7 @@ NPM 包页面：https://www.npmjs.com/package/@tiphareth/dsh-hardssh
 
 | 插件版本 | 已验证 DSH | Node | 远端主机 |
 |---|---|---|---|
-| `0.2.9`（当前） | **`0.2.0-rc.2`（桌面版 Electron）+ `0.2.1-rc.2`（Android runtime）实测** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（0.1.x 矩阵四条线全绿：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
+| `0.2.10`（当前） | **`0.2.0-rc.2`（桌面版 Electron）+ `0.2.1-rc.2`（Android runtime）实测** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（0.1.x 矩阵四条线全绿：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
 | `0.2.5` ~ `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（同上四条线） | 同上 | 同上 |
 
 > 0.2.0 线的说明：宿主侧（插件激活、路由、工作区注册进官方 `ctx.workspace`）已在 **桌面版 0.2.0-rc.2** 上实测通过；客户端会话跟随已按 0.2.0 的新会话 API（`retainedBy.mainView`）适配。0.1.x 的四条线由 `compat/dsh-*.json` 兼容集与 CI 矩阵保证；**0.2.0 的兼容集尚未加入矩阵**（见 `compat/README.md` 的约定）。
@@ -195,6 +195,10 @@ Android 没有系统文件夹对话框，DSH 内核只提供 `browse` 能力。0
 
 - 只有 `browse` → 打开应用内目录浏览器（可输入绝对路径，带 Home / 内部存储 / Documents 快捷入口）；
 - 只有 `native` → 仍弹桌面系统选择框。
+
+0.2.10 起浏览器界面按 DSH 设计语言重绘（路径输入组、快捷入口胶囊、面包屑、目录行线性图标），
+底栏新增**新建文件夹**：在当前列出的目录中命名创建，成功后自动刷新并高亮新行；创建失败会在
+弹窗内显示宿主错误。内核缺少创建目录能力时按钮置灰。
 
 如果读取 `/storage/emulated/0` 被拒，请在 DSH Mobile 的「设置 → 权限中心」授予**所有文件访问**。
 

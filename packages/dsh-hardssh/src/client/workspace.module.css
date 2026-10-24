@@ -152,6 +152,381 @@
   color: var(--dsw-alias-label-tertiary, #81858c);
 }
 
+/* ---------------------------------------------------------------------------
+   Local directory browser (Android / browse-only hosts).
+
+   The panel becomes a fixed-height column: title + path group + quick roots +
+   breadcrumbs + a list that owns the remaining height + a footer. The list
+   scrolls internally so "Use this directory" and "New folder" never fall
+   below the fold on a phone.
+   --------------------------------------------------------------------------- */
+
+.menuDropdownPicker {
+  display: flex;
+  flex-direction: column;
+}
+
+.localBrowser {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 10px;
+}
+
+/* Title: a folder glyph keeps the section aligned with the dsh picker. */
+.field > .localTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary, #0f1115);
+}
+
+.localTitle svg {
+  flex: none;
+  color: var(--dsw-alias-label-secondary, #61666b);
+}
+
+/* Path row: one bordered input group (up / path / open). */
+.localPathRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 3px 4px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.14));
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, #fff);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.localPathRow:focus-within {
+  border-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4176e6);
+  box-shadow: 0 0 0 2px rgba(65, 118, 230, 0.16);
+}
+
+.localPathButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  height: 28px;
+  padding: 0 7px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.localPathButton svg {
+  flex: none;
+}
+
+.localPathButton:hover:not(:disabled) {
+  background: var(--dsw-alias-bg-overlay, rgba(0, 0, 0, 0.05));
+  color: var(--dsw-alias-label-primary, #0f1115);
+}
+
+.localPathButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The kernel's generic `.field input` chrome is neutralised inside the group. */
+.localPathRow > .localPathInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 28px;
+  min-height: 0;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  color: var(--dsw-alias-label-primary, #0f1115);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 28px;
+  text-overflow: ellipsis;
+}
+
+.localPathRow > .localPathInput:focus {
+  border: none;
+  box-shadow: none;
+}
+
+.localPathRow > .localPathInput::placeholder {
+  color: var(--dsw-alias-label-caption, #9aa0a6);
+}
+
+.field > .localHint {
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+
+/* Quick-jump roots: quiet pills with a per-kind line icon. */
+.localChips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.localChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  height: 26px;
+  padding: 0 10px 0 9px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.14));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.localChip svg {
+  flex: none;
+  opacity: 0.8;
+}
+
+.localChip:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary, #0f1115);
+  border-color: var(--dsw-alias-border-l3, rgba(0, 0, 0, 0.2));
+  background: var(--dsw-alias-bg-overlay, rgba(0, 0, 0, 0.05));
+}
+
+.localChip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Breadcrumbs: tertiary text with chevron separators. */
+.localCrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.localCrumbSeat {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.localCrumbSep {
+  flex: none;
+  color: var(--dsw-alias-label-caption, #b6bcc2);
+}
+
+.localCrumb {
+  max-width: 140px;
+  padding: 2px 5px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.localCrumb:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary, #0f1115);
+  background: var(--dsw-alias-bg-overlay, rgba(0, 0, 0, 0.05));
+}
+
+.localCrumb:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Directory list: owns the remaining height, scrolls internally. */
+.localList {
+  flex: 1 1 auto;
+  min-height: 96px;
+  box-sizing: border-box;
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.06));
+  border-radius: 10px;
+  padding: 4px;
+  background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, 0.02));
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsw-alias-scrollbar-bg-l2, rgba(128, 128, 128, 0.4)) transparent;
+}
+
+.localList > .dialogInfo {
+  margin: 6px 4px;
+}
+
+.localRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #0f1115);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.localRow:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.localRow:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.localRowIcon {
+  flex: none;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  transition: color 0.12s ease;
+}
+
+.localRow:hover:not(:disabled) .localRowIcon {
+  color: var(--dsw-alias-label-primary, #0f1115);
+}
+
+.localRowName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.localRowChevron {
+  flex: none;
+  color: var(--dsw-alias-label-caption, #b6bcc2);
+  opacity: 0;
+  transform: translateX(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.localRow:hover:not(:disabled) .localRowChevron,
+.localRow:focus-visible .localRowChevron {
+  opacity: 1;
+  transform: none;
+}
+
+.localRowCreated {
+  animation: dsh-hardssh-created 1.8s ease-out;
+}
+
+@keyframes dsh-hardssh-created {
+  0% { box-shadow: inset 0 0 0 999px rgba(65, 118, 230, 0.18); }
+  100% { box-shadow: inset 0 0 0 999px rgba(65, 118, 230, 0); }
+}
+
+/* Footer: new-folder on the left, cancel / use-this-directory on the right. */
+.localFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.06));
+}
+
+.localFooter .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.localFooter .button svg {
+  flex: none;
+}
+
+.localFooterSpacer {
+  flex: 1 1 auto;
+}
+
+.localNewFolder {
+  color: var(--dsw-alias-label-secondary, #61666b);
+}
+
+.localNewFolder:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary, #0f1115);
+}
+
+.localNameInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.14));
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1, #fff);
+  color: var(--dsw-alias-label-primary, #0f1115);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.localNameInput:focus {
+  border-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4176e6);
+  box-shadow: 0 0 0 2px rgba(65, 118, 230, 0.16);
+}
+
+.localNameInput::placeholder {
+  color: var(--dsw-alias-label-caption, #9aa0a6);
+}
+
+.localNameInput:disabled {
+  opacity: 0.55;
+}
+
+.localChip:focus-visible,
+.localCrumb:focus-visible,
+.localPathButton:focus-visible,
+.localRow:focus-visible,
+.localNameInput:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, #4176e6);
+  outline-offset: 1px;
+}
+
 .danger {
   background: var(--dsw-alias-state-error-primary, #d03050);
   border-color: transparent;
