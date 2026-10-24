@@ -1,6 +1,6 @@
 # dsh-hardssh
 
-[![version](https://img.shields.io/badge/version-0.2.8-4D6BFE)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.2.9-4D6BFE)](CHANGELOG.md)
 [![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-7a3ef3)](https://github.com/topics/dsh-plugin)
@@ -161,7 +161,7 @@ workspace**; there is no host dropdown:
 ## Install
 
 The package is on npm, but **the newest npm version is the pre-release `0.2.6-alpha`**
-(the stable release is still `0.2.5`). This checkout is **`0.2.8`**, which adds dsh 0.2.0/0.2.1,
+(the stable release is still `0.2.5`). This checkout is **`0.2.9`**, which adds dsh 0.2.0/0.2.1,
 Desktop, and Android support, and is **not published to npm yet** — install it from source:
 
 ```sh
@@ -170,7 +170,7 @@ dsh plugin --profile web add link:</path/to/dsh-hardssh>/packages/dsh-hardssh
 
 # or pack a tarball first
 pnpm --filter @tiphareth/dsh-hardssh pack --pack-destination dist
-dsh plugin --profile web add </path/to/dsh-hardssh>/dist/tiphareth-dsh-hardssh-0.2.8.tgz
+dsh plugin --profile web add </path/to/dsh-hardssh>/dist/tiphareth-dsh-hardssh-0.2.9.tgz
 
 # what npm can give you today (0.2.6-alpha pre-release / 0.2.5 stable); without the
 # 0.2.0 / Desktop / Android support added in 0.2.8
@@ -230,7 +230,7 @@ npm package page: https://www.npmjs.com/package/@tiphareth/dsh-hardssh
 
 | Plugin | Verified DSH | Node | Remote hosts |
 |---|---|---|---|
-| `0.2.8` (current) | **`0.2.0-rc.2` (Desktop/Electron) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (four 0.1.x matrix lines green: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
+| `0.2.9` (current) | **`0.2.0-rc.2` (Desktop/Electron) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (four 0.1.x matrix lines green: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
 | `0.2.5` – `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (the same four lines) | same | same |
 
 > About the 0.2.0 line: the host half (plugin activation, routes, workspace registration into the official `ctx.workspace`) was verified on the **Desktop app running dsh 0.2.0-rc.2**, and the client session-follow was ported to the 0.2.0 session API (`retainedBy.mainView`). The four 0.1.x lines are covered by the `compat/dsh-*.json` sets and the CI matrix; **a 0.2.0 compat set is not in the matrix yet** (see the rules in `compat/README.md`).

@@ -2,6 +2,18 @@
 
 > 自 v0.1.2 起开始记录；更早的迭代版本见 Git 提交历史。
 
+## v0.2.9 — 2026-10-25
+
+### 修复：插件入口在原生 Node ESM 下加载失败（0.2.8 回归）
+
+- **现象**：Android（以及任何 Node 22/24 原生 ESM 环境）上 hardssh 显示“已启用”、运行状态却是“未运行”。引擎日志：
+  `hardssh (@tiphareth/dsh-hardssh): failed to import: …/lib/index.js:14`
+  `SyntaxError: Named export 'utils' not found. The requested module 'ssh2' is a CommonJS module …`
+  随后插件健康标记 `ok=false, failedEntries=[hardssh]`；监督器只记录 `no removable third-party bundle`，不会自动摘除内置插件。
+- **根因**：0.2.8 为生成密钥新增 `import { utils as sshUtils } from 'ssh2'`。`ssh2@1.17` 是 CommonJS，`utils` 在 `module.exports` 里是嵌套对象字面量，Node 的静态导出探测识别不到；tsdown 把这条 import 提升到 `lib/index.js` 顶层，入口在模块实例化阶段即失败，cordis 只记 “1 entry did not activate”。
+- **修复**：改为默认导入后解构（`import ssh2 from 'ssh2'; const { utils } = ssh2`）。密钥格式与生成行为不变。
+- **防回归**：新增 `scripts/check-entry.mjs`，在 `build` 末尾用**原生 Node** import 构建后的 `lib/index.js`。vitest 走 Vite 的 CJS interop（命名导入会被转成属性访问），测不出这类问题；只有真实 ESM 加载才能暴露。
+
 ## v0.2.8 — 2026-10-24
 
 ### Android：本地工作区不再报 `directory picker failed`

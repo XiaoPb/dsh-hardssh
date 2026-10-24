@@ -13,8 +13,15 @@
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { utils as sshUtils } from 'ssh2'
+// ssh2 ships as CommonJS. Node's ESM named-export detection cannot see its
+// `utils` export (a nested object literal), so `import { utils } from 'ssh2'`
+// fails at module-instantiation time and takes the whole plugin entry down.
+// Take the module object and destructure instead (see scripts/check-entry.mjs,
+// which imports the built entry with plain Node to catch this class of bug).
+import ssh2 from 'ssh2'
 import { androidUserDataRoot, isAndroidRuntime } from '../platform.ts'
+
+const { utils: sshUtils } = ssh2
 
 /** Default private keys OpenSSH tries, in its own preference order. */
 export const DEFAULT_PRIVATE_KEY_NAMES = ['id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa'] as const
