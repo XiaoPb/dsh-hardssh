@@ -2,7 +2,11 @@
 
 > 自 v0.1.2 起开始记录；更早的迭代版本见 Git 提交历史。
 
-## v0.2.11 — 2026-10-25
+## v0.2.12 — 2026-10-25
+
+> `v0.2.11` 是一次**未发布的失败发布尝试**：Linux CI 在没有默认私钥的环境里认证测试失败，
+> npm 没有发布任何版本，GitHub Release 也未创建。`v0.2.12` 是首个实际发布版本，包含
+> `v0.2.11` 的全部变更，并补齐 DSH `0.2.1-rc.2` / `0.2.1-rc.3` 兼容。
 
 ### Fork 独立发布：`@xiaopb/dsh-hardssh`
 
@@ -21,7 +25,7 @@
 - **npm 双通道发布**：优先 **trusted publishing（GitHub OIDC，带 provenance）**；失败时自动
   回退 **`NPM_TOKEN`**（`--no-provenance`），并在 job summary 标明实际使用的通道与两种
   outcome。`-alpha`/`-beta`/`-rc` 版本自动用 `next` dist-tag，正式版用 `latest`。
-  首次发布时包尚不存在、无法提前配置 Trusted Publisher，因此 `v0.2.11` 会走 token 回退；
+  首次发布时包尚不存在、无法提前配置 Trusted Publisher，因此 `v0.2.12` 会走 token 回退；
   首次发布后再补配 OIDC。
 - **文档**：README/README.en 增加 fork 说明、npm/GitHub Releases 安装方式与「发布」
   一节（npm scope、npm trusted publisher 配置、`NPM_TOKEN` 回退、`dsh-plugin` topic、

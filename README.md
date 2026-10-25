@@ -1,6 +1,6 @@
 # dsh-hardssh
 
-[![version](https://img.shields.io/badge/version-0.2.11-4D6BFE)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.2.12-4D6BFE)](CHANGELOG.md)
 [![npm](https://img.shields.io/badge/npm-%40xiaopb%2Fdsh--hardssh-CB3837)](https://www.npmjs.com/package/@xiaopb/dsh-hardssh)
 [![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1%2B-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
@@ -109,20 +109,20 @@ WorkspaceRecord / WorkspaceProvider / WorkspaceConnection / 能力(capability)
 
 ## 安装
 
-本 fork 独立发布到 npm（包名 `@xiaopb/dsh-hardssh`；npm 包名只能小写）。`v0.2.11` 起由
+本 fork 独立发布到 npm（包名 `@xiaopb/dsh-hardssh`；npm 包名只能小写）。`v0.2.12` 起由
 GitHub Actions 校验、构建、打包并发布，安装方式：
 
 ```sh
 # npm（推荐）
 dsh plugin --profile web add @xiaopb/dsh-hardssh
-dsh plugin --profile web add @xiaopb/dsh-hardssh@0.2.11   # 固定版本
+dsh plugin --profile web add @xiaopb/dsh-hardssh@0.2.12   # 固定版本
 
 # 源码链接（开发用：改码后重建 lib/ 并重启 dsh 即生效）
 dsh plugin --profile web add link:</path/to/dsh-hardssh>/packages/dsh-hardssh
 
 # 或先打包，再安装 tarball（CI 产物同名）
 pnpm --filter @xiaopb/dsh-hardssh pack --pack-destination dist
-dsh plugin --profile web add </path/to/dsh-hardssh>/dist/xiaopb-dsh-hardssh-0.2.11.tgz
+dsh plugin --profile web add </path/to/dsh-hardssh>/dist/xiaopb-dsh-hardssh-0.2.12.tgz
 ```
 
 发布产物、SHA-256 与逐条变更说明见
@@ -159,7 +159,7 @@ NPM 包页面：https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
 | 插件版本 | 已验证 DSH | Node | 远端主机 |
 |---|---|---|---|
-| `0.2.11`（当前，fork） | **`0.2.1-rc.3`（桌面版 Electron，CI 矩阵与完整套件实测）+ `0.2.1-rc.2`（Android runtime）** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1`（0.1.x 矩阵四条线全绿 + 0.2.1 线：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.2.1-rc.2` / `0.2.1-rc.3`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
+| `0.2.12`（当前，fork） | **`0.2.1-rc.3`（桌面版 Electron，CI 矩阵与完整套件实测）+ `0.2.1-rc.2`（Android runtime）** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1`（0.1.x 矩阵四条线全绿 + 0.2.1 线：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.2.1-rc.2` / `0.2.1-rc.3`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
 | `0.2.5` ~ `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（旧四条线；不含 0.2.1 显式预发布臂） | 同上 | 同上 |
 
 > 0.2.1 线的说明：当前桌面版运行时为 **`0.2.1-rc.3`**，已加入 `compat/dsh-0.2.1-rc.3.json` 与 CI 矩阵；`settings/document-updated`、右侧栏 guide `id`、`SubprocessHandle.control` 均已按 0.2.x 适配，0.1.x 行为保持。0.2.0-rc.2 是历史桌面线，其宿主侧与客户端会话跟随曾实测通过；当前声明范围从 0.2.1-rc.1 起（0.2.1-rc.2 是 Android runtime 线、0.2.1-rc.3 是桌面版线，均已加入矩阵）。
@@ -356,8 +356,8 @@ fork/上游与许可证声明。
 # 2) 更新 CHANGELOG.md
 # 3) 提交并打 tag
 git add -A
-git commit -m "chore(release): v0.2.11"
-git tag v0.2.11
+git commit -m "chore(release): v0.2.12"
+git tag v0.2.12
 git push origin master --tags
 ```
 

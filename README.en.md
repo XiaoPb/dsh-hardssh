@@ -1,6 +1,6 @@
 # dsh-hardssh
 
-[![version](https://img.shields.io/badge/version-0.2.11-4D6BFE)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.2.12-4D6BFE)](CHANGELOG.md)
 [![npm](https://img.shields.io/badge/npm-%40xiaopb%2Fdsh--hardssh-CB3837)](https://www.npmjs.com/package/@xiaopb/dsh-hardssh)
 [![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1%2B-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
@@ -172,20 +172,20 @@ workspace**; there is no host dropdown:
 ## Install
 
 This fork is independently published to npm as `@xiaopb/dsh-hardssh` (npm package names
-must be lowercase). Starting with `v0.2.11`, GitHub Actions verifies, builds, packs, and
+must be lowercase). Starting with `v0.2.12`, GitHub Actions verifies, builds, packs, and
 publishes every release:
 
 ```sh
 # npm (recommended)
 dsh plugin --profile web add @xiaopb/dsh-hardssh
-dsh plugin --profile web add @xiaopb/dsh-hardssh@0.2.11   # pinned
+dsh plugin --profile web add @xiaopb/dsh-hardssh@0.2.12   # pinned
 
 # source link (development: rebuild lib/ and restart dsh)
 dsh plugin --profile web add link:</path/to/dsh-hardssh>/packages/dsh-hardssh
 
 # or pack a tarball first (same name as the CI artifact)
 pnpm --filter @xiaopb/dsh-hardssh pack --pack-destination dist
-dsh plugin --profile web add </path/to/dsh-hardssh>/dist/xiaopb-dsh-hardssh-0.2.11.tgz
+dsh plugin --profile web add </path/to/dsh-hardssh>/dist/xiaopb-dsh-hardssh-0.2.12.tgz
 ```
 
 Artifacts, SHA-256 hashes, and per-release notes live in
@@ -241,7 +241,7 @@ npm package page: https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
 | Plugin | Verified DSH | Node | Remote hosts |
 |---|---|---|---|
-| `0.2.11` (current, fork) | **`0.2.1-rc.3` (Desktop/Electron, CI matrix + complete suite) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1` (four 0.1.x matrix lines plus the 0.2.1 line: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`, `0.2.1-rc.2`, `0.2.1-rc.3`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
+| `0.2.12` (current, fork) | **`0.2.1-rc.3` (Desktop/Electron, CI matrix + complete suite) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1` (four 0.1.x matrix lines plus the 0.2.1 line: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`, `0.2.1-rc.2`, `0.2.1-rc.3`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
 | `0.2.5` – `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (the old four lines; no explicit 0.2.1 prerelease arm) | same | same |
 
 > About the 0.2.1 line: the current Desktop runtime is **`0.2.1-rc.3`**, covered by `compat/dsh-0.2.1-rc.3.json` and the CI matrix. `settings/document-updated`, the sidebar-right guide `id`, and `SubprocessHandle.control` are adapted for 0.2.x while 0.1.x behaviour stays intact. 0.2.0-rc.2 is the historical Desktop line whose host half and client session-follow were verified; the declared range starts at 0.2.1-rc.1; both 0.2.1-rc.2 (Android runtime) and 0.2.1-rc.3 (Desktop) are in the matrix.
@@ -468,8 +468,8 @@ Release:
 # keep the root and packages/dsh-hardssh/package.json versions in sync,
 # update CHANGELOG.md, then:
 git add -A
-git commit -m "chore(release): v0.2.11"
-git tag v0.2.11
+git commit -m "chore(release): v0.2.12"
+git tag v0.2.12
 git push origin master --tags
 ```
 
