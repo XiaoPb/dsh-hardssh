@@ -367,45 +367,107 @@ export function makeRoutes(deps: WorkspaceRoutesDeps): WebRoute[] {
     },
   }
 
-  /** Browse a remote directory tree (SFTP readdir via the engine) for the
-   *  workspace picker. Query: alias + path (default home when omitted). */
+  /** Validate the absolute POSIX parent path shared by listing and mkdir. */
+  const posixParentPath = (value: string): string | undefined => {
+    if (value.includes('\0') || value.includes('\\') || !value.startsWith('/')) return undefined
+    return posix.normalize(value)
+  }
+
+  /** Browse a remote directory tree (GET, SFTP readdir via the engine) and
+   *  create one directory level (POST, SFTP mkdir) for the workspace picker.
+   *  GET query: alias + path (default home when omitted). POST body:
+   *  { alias, path, name } — `path` is the listed parent, `name` one segment. */
   const dirRoute: WebRoute = {
     kind: 'exact',
     path: WORKSPACE_API.sshWorkspaceDir,
     handler: async (req, res) => {
-      if (!guard(req, res, 'GET')) return
-      const url = new URL(req.url ?? '/', 'http://localhost')
-      const alias = queryParam(url, 'alias')
-      let requestedPath = queryParam(url, 'path')
-      if (alias === undefined || alias === '') {
-        writeJson(res, 400, { error: 'alias query parameter is required' })
+      if (!isLoopbackRequest(req)) {
+        writeJson(res, 403, { error: 'forbidden: loopback-only' })
         return
       }
-      if (hosts.find(alias) === undefined) {
-        writeJson(res, 404, { error: `alias '${alias}' not found` })
-        return
-      }
-      try {
-        if (requestedPath === undefined || requestedPath === '') {
-          const home = await engine.exec(alias, 'printf %s "$HOME"', 10_000)
-          if (!home.success || home.stdout.trim() === '') {
-            writeJson(res, 502, { error: `could not resolve remote home: ${home.stderr.trim() || 'empty $HOME'}` })
-            return
-          }
-          requestedPath = home.stdout.trim()
-        }
-        if (requestedPath.includes('\0') || requestedPath.includes('\\') || !requestedPath.startsWith('/')) {
-          writeJson(res, 400, { error: `path must be an absolute POSIX path (got '${requestedPath}')` })
+      if (req.method === 'GET') {
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const alias = queryParam(url, 'alias')
+        let requestedPath = queryParam(url, 'path')
+        if (alias === undefined || alias === '') {
+          writeJson(res, 400, { error: 'alias query parameter is required' })
           return
         }
-        const abs = posix.normalize(requestedPath)
-        const entries = sortWorkspaceEntries(
-          (await engine.ls(alias, abs)).map((entry) => ({ name: entry.name, type: entry.type, size: entry.size, mtimeMs: entry.mtimeMs })),
-        )
-        writeJson(res, 200, { path: abs, entries })
-      } catch (error) {
-        writeRouteError(res, error, 502)
+        if (hosts.find(alias) === undefined) {
+          writeJson(res, 404, { error: `alias '${alias}' not found` })
+          return
+        }
+        try {
+          if (requestedPath === undefined || requestedPath === '') {
+            const home = await engine.exec(alias, 'printf %s "$HOME"', 10_000)
+            if (!home.success || home.stdout.trim() === '') {
+              writeJson(res, 502, { error: `could not resolve remote home: ${home.stderr.trim() || 'empty $HOME'}` })
+              return
+            }
+            requestedPath = home.stdout.trim()
+          }
+          const abs = posixParentPath(requestedPath)
+          if (abs === undefined) {
+            writeJson(res, 400, { error: `path must be an absolute POSIX path (got '${requestedPath}')` })
+            return
+          }
+          const entries = sortWorkspaceEntries(
+            (await engine.ls(alias, abs)).map((entry) => ({ name: entry.name, type: entry.type, size: entry.size, mtimeMs: entry.mtimeMs })),
+          )
+          writeJson(res, 200, { path: abs, entries })
+        } catch (error) {
+          writeRouteError(res, error, 502)
+        }
+        return
       }
+      if (req.method === 'POST') {
+        let body: Record<string, unknown>
+        try {
+          body = await readJsonBody(req)
+        } catch (error) {
+          writeRouteError(res, error)
+          return
+        }
+        const alias = typeof body.alias === 'string' ? body.alias.trim() : ''
+        const parent = typeof body.path === 'string' ? body.path.trim() : ''
+        const name = typeof body.name === 'string' ? body.name.trim() : ''
+        if (alias === '' || parent === '' || name === '') {
+          writeJson(res, 400, { error: 'alias, path and name are required' })
+          return
+        }
+        if (hosts.find(alias) === undefined) {
+          writeJson(res, 404, { error: `alias '${alias}' not found` })
+          return
+        }
+        const abs = posixParentPath(parent)
+        if (abs === undefined) {
+          writeJson(res, 400, { error: `path must be an absolute POSIX path (got '${parent}')` })
+          return
+        }
+        // One path segment only: reject separators, NUL and the dot entries so
+        // the create cannot escape the listed level.
+        if (name.includes('\0') || name.includes('/') || name.includes('\\') || name === '.' || name === '..') {
+          writeJson(res, 400, { error: `name must be a single directory name (got '${name}')` })
+          return
+        }
+        const target = posix.join(abs, name)
+        try {
+          // A quick listing gives "already exists" the right status instead of
+          // silently succeeding through mkdir -p semantics. Permission and
+          // transport failures propagate and are mapped by writeRouteError.
+          const existing = await engine.ls(alias, abs)
+          if (existing.some((entry) => entry.name === name)) {
+            writeJson(res, 409, { error: `'${name}' already exists in '${abs}'`, code: 'EEXIST' })
+            return
+          }
+          await engine.mkdir(alias, target)
+          writeJson(res, 200, { path: target })
+        } catch (error) {
+          writeRouteError(res, error, 502)
+        }
+        return
+      }
+      writeJson(res, 405, { error: `method not allowed: ${req.method}` })
     },
   }
 

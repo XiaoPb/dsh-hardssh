@@ -264,6 +264,140 @@ describe('DirectoryFlow browse capability (Android / browse-only host)', () => {
   })
 })
 
+describe('DirectoryFlow SSH new-folder composer', () => {
+  const flush = async (): Promise<void> => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  }
+
+  const entry = (name: string) => ({ name, type: 'dir' as const, size: 0, mtimeMs: 1 })
+
+  const remoteLevel = (...names: string[]) => ({
+    path: '/srv/app',
+    entries: names.map(entry),
+  })
+
+  /** Drive the React-controlled name input with the native setter. */
+  const typeName = async (menu: () => HTMLElement, value: string): Promise<void> => {
+    const input = menu().querySelector<HTMLInputElement>('[data-test="remote-new-name"]')!
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      setter.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+
+  /** Open the SSH branch, pick the host and browse its listed level. */
+  const openRemote = async (menu: () => HTMLElement): Promise<void> => {
+    await act(async () => { menu().querySelectorAll<HTMLButtonElement>('button')[1].click() })
+    await flush()
+    const select = menu().querySelector<HTMLSelectElement>('select')!
+    await act(async () => {
+      select.value = 'h'
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="remote-browse"]')!.click() })
+    await flush()
+  }
+
+  const mountRemote = async (extra: Partial<DirectoryFlowInjected> = {}) => {
+    const listHosts = vi.fn(async () => [host('h')])
+    return await mount(async () => null, true, { listHosts, ...extra })
+  }
+
+  it('creates in the listed remote level, re-lists it and reveals the new row', async () => {
+    const listRemoteDir = vi.fn()
+      .mockResolvedValueOnce(remoteLevel('old'))
+      .mockResolvedValueOnce(remoteLevel('newdir', 'old'))
+    const createRemoteDir = vi.fn(async () => ({ path: '/srv/app/newdir' }))
+    const { root, menu } = await mountRemote({ listRemoteDir, createRemoteDir })
+
+    await openRemote(menu)
+    expect(menu().querySelector('[data-test="remote-browser"]')).not.toBeNull()
+    const newButton = menu().querySelector<HTMLButtonElement>('[data-test="remote-new-folder"]')!
+    expect(newButton.disabled).toBe(false)
+    await act(async () => { newButton.click() })
+    expect(menu().querySelector('[data-test="remote-new-name"]')).not.toBeNull()
+
+    await typeName(menu, 'newdir')
+    const create = menu().querySelector<HTMLButtonElement>('[data-test="remote-new-create"]')!
+    expect(create.disabled).toBe(false)
+    await act(async () => { create.click() })
+    await flush()
+
+    expect(createRemoteDir).toHaveBeenCalledWith('h', '/srv/app', 'newdir')
+    expect(listRemoteDir).toHaveBeenLastCalledWith('h', '/srv/app')
+    expect(menu().querySelector('[data-test="remote-new-name"]')).toBeNull()
+    expect(menu().querySelector('[data-entry-name="newdir"]')).not.toBeNull()
+    await act(async () => { root.unmount() })
+  })
+
+  it('rejects an invalid name locally and keeps the host out of it', async () => {
+    const listRemoteDir = vi.fn(async () => remoteLevel())
+    const createRemoteDir = vi.fn(async () => ({ path: '/srv/app/x' }))
+    const { root, menu } = await mountRemote({ listRemoteDir, createRemoteDir })
+    await openRemote(menu)
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="remote-new-folder"]')!.click() })
+
+    await typeName(menu, 'bad/name')
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="remote-new-create"]')!.click() })
+    await flush()
+
+    expect(createRemoteDir).not.toHaveBeenCalled()
+    expect(menu().querySelector('[role="alert"]')?.textContent).toContain('cannot contain')
+    expect(menu().querySelector('[data-test="remote-new-name"]')).not.toBeNull()
+    await act(async () => { root.unmount() })
+  })
+
+  it('keeps the composer open and shows the host message when create fails', async () => {
+    const listRemoteDir = vi.fn(async () => remoteLevel())
+    const createRemoteDir = vi.fn(async () => {
+      throw new Error("'dupe' already exists in '/srv/app'")
+    })
+    const { root, menu } = await mountRemote({ listRemoteDir, createRemoteDir })
+    await openRemote(menu)
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="remote-new-folder"]')!.click() })
+
+    await typeName(menu, 'dupe')
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="remote-new-create"]')!.click() })
+    await flush()
+
+    expect(createRemoteDir).toHaveBeenCalledWith('h', '/srv/app', 'dupe')
+    expect(menu().querySelector('[role="alert"]')?.textContent).toContain('already exists')
+    expect(menu().querySelector('[data-test="remote-new-name"]')).not.toBeNull()
+    // No refresh on failure: only the initial browse call happened.
+    expect(listRemoteDir).toHaveBeenCalledTimes(1)
+    await act(async () => { root.unmount() })
+  })
+
+  it('runs the interactive connection gate and retries a credential failure', async () => {
+    const listRemoteDir = vi.fn(async () => remoteLevel())
+    const createRemoteDir = vi.fn()
+      .mockRejectedValueOnce({ code: 'NEEDS_PASSWORD' })
+      .mockResolvedValueOnce({ path: '/srv/app/fresh' })
+    const ensureConnected = vi.fn(async () => true)
+    const { root, menu } = await mountRemote({ listRemoteDir, createRemoteDir, ensureConnected })
+    await openRemote(menu)
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="remote-new-folder"]')!.click() })
+
+    await typeName(menu, 'fresh')
+    await act(async () => { menu().querySelector<HTMLButtonElement>('[data-test="remote-new-create"]')!.click() })
+    await flush()
+
+    expect(ensureConnected).toHaveBeenCalledWith('h')
+    expect(createRemoteDir).toHaveBeenCalledTimes(2)
+    expect(menu().querySelector('[data-test="remote-new-name"]')).toBeNull()
+    await act(async () => { root.unmount() })
+  })
+
+  it('disables the action when the host exposes no remote create verb', async () => {
+    const listRemoteDir = vi.fn(async () => remoteLevel())
+    const { root, menu } = await mountRemote({ listRemoteDir })
+    await openRemote(menu)
+    expect(menu().querySelector<HTMLButtonElement>('[data-test="remote-new-folder"]')!.disabled).toBe(true)
+    await act(async () => { root.unmount() })
+  })
+})
+
 describe('DirectoryFlow local new-folder composer', () => {
   const flush = async (): Promise<void> => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })

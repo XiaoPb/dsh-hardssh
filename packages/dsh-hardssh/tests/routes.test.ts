@@ -421,6 +421,58 @@ describe('local picker roots over the /api/dsh-hardssh surface', () => {
   })
 })
 
+describe('remote directory create over the /api/dsh-hardssh surface', () => {
+  it('creates one level in the listed parent, rejects duplicates and escapes', async () => {
+    const fake = new FakeEngine()
+    fake.seedDir('/srv/app')
+    const routes = makeWorkspaceRoutes({ hosts, engine: asSshEngine(fake), workspaces: store })
+    const localServer = createServer((req, res) => {
+      const rawPath = new URL(req.url ?? '/', 'http://x').pathname
+      const route = routes.find(r => r.kind === 'exact' && r.path === rawPath)
+      if (route === undefined) {
+        res.writeHead(404)
+        res.end()
+        return
+      }
+      void route.handler(req, res)
+    })
+    await new Promise<void>((resolve) => { localServer.listen(0, '127.0.0.1', resolve) })
+    const localPort = (localServer.address() as AddressInfo).port
+    const dirPath = WORKSPACE_API.sshWorkspaceDir
+
+    try {
+      const listed = await sendTo(localPort, 'GET', `${dirPath}?${new URLSearchParams({ alias: 'host', path: '/srv/app' }).toString()}`)
+      expect(listed.status).toBe(200)
+      expect((JSON.parse(listed.text) as { path: string }).path).toBe('/srv/app')
+
+      const created = await sendTo(localPort, 'POST', dirPath, { alias: 'host', path: '/srv/app', name: 'newdir' })
+      expect(created.status).toBe(200)
+      expect((JSON.parse(created.text) as { path: string }).path).toBe('/srv/app/newdir')
+      expect(fake.files.get('/srv/app/newdir')?.type).toBe('dir')
+
+      const duplicate = await sendTo(localPort, 'POST', dirPath, { alias: 'host', path: '/srv/app', name: 'newdir' })
+      expect(duplicate.status).toBe(409)
+      expect((JSON.parse(duplicate.text) as { code: string }).code).toBe('EEXIST')
+
+      // One path segment only: separators and dot entries never reach the host.
+      for (const name of ['../escape', 'nested/dir', '..']) {
+        const rejected = await sendTo(localPort, 'POST', dirPath, { alias: 'host', path: '/srv/app', name })
+        expect(rejected.status).toBe(400)
+      }
+      const relative = await sendTo(localPort, 'POST', dirPath, { alias: 'host', path: 'srv/app', name: 'x' })
+      expect(relative.status).toBe(400)
+      const unknownAlias = await sendTo(localPort, 'POST', dirPath, { alias: 'nope', path: '/srv/app', name: 'x' })
+      expect(unknownAlias.status).toBe(404)
+      const wrongMethod = await sendTo(localPort, 'PATCH', dirPath)
+      expect(wrongMethod.status).toBe(405)
+      const fenced = await sendToWithHeaders(localPort, 'POST', dirPath, { host: 'evil.example.com' })
+      expect(fenced.status).toBe(403)
+    } finally {
+      await new Promise<void>((resolve) => { localServer.close(() => resolve()) })
+    }
+  })
+})
+
 describe('host-delete reference guard over the generic record source', () => {
   it('refuses deleting a host still backing a generic SSH workspace, then allows it after removal', async () => {
     // Re-create one workspace bound to alias 'host' via the generic surface.

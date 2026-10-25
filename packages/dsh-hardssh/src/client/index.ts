@@ -190,6 +190,7 @@ export function apply(ctx: ClientContext): void {
         auth: { kind: 'password'; password: string } | { kind: 'key'; keyPath: string; passphrase?: string }
       }) => hostsApi.create(input),
       listRemoteDir: (alias: string, path?: string) => api.listRemoteDir(alias, path),
+      createRemoteDir: (alias: string, path: string, name: string) => api.createRemoteDir(alias, path, name),
       ensureConnected: (alias: string) => connectHost(sshApi, alias),
     })
     ctx.slots.inject('conversation.hero.workspace.directoryFlow', () => ctx.slots.inject('sidebar.workspaces.directoryFlow', function* () {

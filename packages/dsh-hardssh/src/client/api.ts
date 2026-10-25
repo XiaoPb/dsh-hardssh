@@ -82,6 +82,16 @@ export class WorkspaceApi {
     return body
   }
 
+  /** Create one directory inside a listed remote level (SSH workspace picker). */
+  async createRemoteDir(alias: string, path: string, name: string): Promise<{ path: string }> {
+    const response = await fetch(WORKSPACE_API.sshWorkspaceDir, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ alias, path, name }),
+    })
+    return await readJson<{ path: string }>(response)
+  }
+
   /** Quick-jump roots for the LOCAL workspace browser (Android/desktop). */
   async listLocalRoots(): Promise<LocalRoot[]> {
     const response = await fetch(WORKSPACE_API.localRoots)

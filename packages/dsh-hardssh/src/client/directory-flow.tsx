@@ -112,6 +112,8 @@ export interface DirectoryFlowInjected {
   }) => Promise<{ alias: string; host: string; port: number; user: string }>
   /** Browse a remote directory (host API). */
   listRemoteDir: (alias: string, path?: string) => Promise<{ path: string; entries: Array<{ name: string; type: 'dir' | 'file' | 'other'; size: number; mtimeMs: number }> }>
+  /** Create one directory inside a listed remote level (host API). */
+  createRemoteDir?: (alias: string, path: string, name: string) => Promise<{ path: string }>
   /** Interactive SSH connection gate: host-key TOFU + session-password
    *  dialogs. Resolves true when the alias is connected (or the user
    *  cancelled the prompts). Used to retry browsing. */
@@ -216,7 +218,15 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
   const [newFolderError, setNewFolderError] = useState<string | null>(null)
   const [newFolderBusy, setNewFolderBusy] = useState(false)
   const [createdName, setCreatedName] = useState<string | null>(null)
+  // SSH browser: same inline composer, kept separate so switching between the
+  // local and SSH branches never leaks a half-typed name into the other.
+  const [remoteNewFolderOpen, setRemoteNewFolderOpen] = useState(false)
+  const [remoteNewFolderName, setRemoteNewFolderName] = useState('')
+  const [remoteNewFolderError, setRemoteNewFolderError] = useState<string | null>(null)
+  const [remoteNewFolderBusy, setRemoteNewFolderBusy] = useState(false)
+  const [remoteCreatedName, setRemoteCreatedName] = useState<string | null>(null)
   const rowRefs = useRef(new Map<string, HTMLButtonElement>())
+  const remoteRowRefs = useRef(new Map<string, HTMLButtonElement>())
   const [anchor, setAnchor] = useState<AnchorRect | undefined>(undefined)
   // "Add server…" mini-form inside the SSH branch.
   const [addingHost, setAddingHost] = useState(false)
@@ -269,6 +279,11 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
     setNewFolderError(null)
     setNewFolderBusy(false)
     setCreatedName(null)
+    setRemoteNewFolderOpen(false)
+    setRemoteNewFolderName('')
+    setRemoteNewFolderError(null)
+    setRemoteNewFolderBusy(false)
+    setRemoteCreatedName(null)
     setAddingHost(false)
     setNewHost({ alias: '', host: '', port: '22', user: '', password: '' })
     setAnchorRect()
@@ -321,11 +336,36 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
     return () => window.clearTimeout(timer)
   }, [createdName])
 
-  // Leaving the local browser retires the inline composer with it.
+  // Same reveal/flash contract for a directory created on the SSH host.
+  useEffect(() => {
+    if (remoteCreatedName === null) return
+    const row = remoteRowRefs.current.get(remoteCreatedName)
+    if (row !== undefined && typeof row.scrollIntoView === 'function') {
+      try {
+        row.scrollIntoView({ block: 'nearest' })
+      } catch {
+        /* jsdom and some older webviews do not implement smooth scrolling */
+      }
+    }
+  }, [remoteCreatedName, dirEntries])
+
+  useEffect(() => {
+    if (remoteCreatedName === null) return
+    const timer = window.setTimeout(() => setRemoteCreatedName(null), 2200)
+    return () => window.clearTimeout(timer)
+  }, [remoteCreatedName])
+
+  // Leaving either browser retires its inline composer with it.
   useEffect(() => {
     if (choice === 'local-browsing') return
     setNewFolderOpen(false)
     setNewFolderError(null)
+  }, [choice])
+
+  useEffect(() => {
+    if (choice === 'browsing') return
+    setRemoteNewFolderOpen(false)
+    setRemoteNewFolderError(null)
   }, [choice])
 
   /** Locate the trigger element that just opened the flow and anchor the menu
@@ -600,6 +640,88 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
     void browseLocal(parent)
   }
 
+  /** Open the SSH browser's inline new-folder composer for the listed level. */
+  const openRemoteNewFolder = (): void => {
+    if (dirPath === '' || props.createRemoteDir === undefined) return
+    setRemoteNewFolderName('')
+    setRemoteNewFolderError(null)
+    setRemoteNewFolderOpen(true)
+  }
+
+  /** Close the SSH new-folder composer without creating anything. */
+  const closeRemoteNewFolder = (): void => {
+    if (remoteNewFolderBusy) return
+    setRemoteNewFolderOpen(false)
+    setRemoteNewFolderName('')
+    setRemoteNewFolderError(null)
+  }
+
+  /**
+   * Create the named folder inside the LISTED remote level and re-list it.
+   *
+   * The same validation as the local composer runs inline (the route rejects
+   * these anyway). A connection that needs a credential (host key / session
+   * password) runs the interactive gate and retries, so a long browse session
+   * whose pooled connection was reaped still creates without a raw error.
+   */
+  const confirmRemoteNewFolder = async (): Promise<void> => {
+    if (remoteNewFolderBusy) return
+    const name = remoteNewFolderName.trim()
+    if (name === '') {
+      setRemoteNewFolderError(tt('flow.newFolderNeedName'))
+      return
+    }
+    if (/[\\/]/.test(name) || name === '.' || name === '..') {
+      setRemoteNewFolderError(tt('flow.newFolderInvalidName'))
+      return
+    }
+    const parent = dirPath
+    if (parent === '') {
+      setRemoteNewFolderError(tt('flow.emptyPath'))
+      return
+    }
+    const createRemoteDir = props.createRemoteDir
+    if (createRemoteDir === undefined) {
+      setRemoteNewFolderError(tt('flow.newFolderNoService'))
+      return
+    }
+    const request = ++directoryRequestSequence.current
+    setRemoteNewFolderBusy(true)
+    setRemoteNewFolderError(null)
+    let created = false
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await createRemoteDir(host, parent, name)
+          created = true
+          break
+        } catch (reason: unknown) {
+          if (request !== directoryRequestSequence.current || !openRef.current) return
+          const code = (reason as { code?: string })?.code
+          const interactive = code === 'NEEDS_PASSWORD' || code === 'HOST_KEY_UNKNOWN' || code === 'HOST_KEY_MISMATCH'
+          if (!interactive) {
+            setRemoteNewFolderError(tt('flow.newFolderFailed', reasonText(reason)))
+            return
+          }
+          const connected = await props.ensureConnected(host)
+          if (request !== directoryRequestSequence.current || !openRef.current) return
+          if (!connected) return // user cancelled the credential prompts
+        }
+      }
+      if (!created) {
+        setRemoteNewFolderError(tt('create.needConnect'))
+        return
+      }
+      setRemoteNewFolderBusy(false)
+      setRemoteNewFolderOpen(false)
+      setRemoteNewFolderName('')
+      setRemoteCreatedName(name)
+      void browse(host, parent)
+    } finally {
+      if (request === directoryRequestSequence.current && openRef.current) setRemoteNewFolderBusy(false)
+    }
+  }
+
   /** Browse a remote dir level for the SSH branch. When the connection needs
    *  a credential (host key untrusted / session password), run the interactive
    *  gate first, then retry — the operator never sees a raw "connect" error. */
@@ -710,7 +832,9 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
   const menuWidth = choice === 'menu' ? 200 : 360
   const menuHeight = choice === 'local-browsing'
     ? Math.min(460, window.innerHeight - 16)
-    : addingHost ? Math.min(560, window.innerHeight - 16) : 320
+    : choice === 'browsing'
+      ? Math.min(440, window.innerHeight - 16)
+      : addingHost ? Math.min(560, window.innerHeight - 16) : 320
   const rawTop = anchor !== undefined ? anchor.bottom + 4 : 56
   const rawLeft = anchor !== undefined ? anchor.left : Math.max(8, window.innerWidth - menuWidth - 8)
   const top = Math.max(8, Math.min(rawTop, window.innerHeight - menuHeight - 8))
@@ -850,7 +974,7 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
                   <input value={dirPath} disabled={loading} onChange={(event) => setDirPath(event.target.value)} placeholder={tt('create.dirPlaceholder')} spellCheck={false} />
                 </label>
                 <div className={css.dialogActions} style={{ gridColumn: '1 / -1' }}>
-                  <button type="button" className={css.button} disabled={busy || loading} onClick={() => void browse(host)}>
+                  <button type="button" className={css.button} data-test="remote-browse" disabled={busy || loading} onClick={() => void browse(host)}>
                     {loading ? tt('create.connecting') : tt('create.browse')}
                   </button>
                 </div>
@@ -1082,14 +1206,15 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
         )}
 
         {choice === 'browsing' && (
-          <div className={css.dialogGrid} style={{ gridTemplateColumns: '1fr' }}>
+          <div className={css.dialogGrid} data-test="remote-browser" style={{ gridTemplateColumns: '1fr' }}>
             <div className={css.field} style={{ gridColumn: '1' }}>
               <span>{tt('create.browse')} · {host}</span>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   type="button"
                   className={css.button}
-                  disabled={loading || dirPath === '/'}
+                  data-test="remote-up"
+                  disabled={loading || remoteNewFolderOpen || dirPath === '/'}
                   onClick={() => {
                     const parent = dirPath.split('/').slice(0, -1).join('/') || '/'
                     void browse(host, parent)
@@ -1106,8 +1231,13 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
                 <button
                   key={entry.name}
                   type="button"
-                  className={css.hostRow}
-                  disabled={loading}
+                  data-entry-name={entry.name}
+                  className={entry.name === remoteCreatedName ? `${css.hostRow} ${css.localRowCreated}` : css.hostRow}
+                  disabled={loading || remoteNewFolderOpen || remoteNewFolderBusy}
+                  ref={(el) => {
+                    if (el === null) remoteRowRefs.current.delete(entry.name)
+                    else remoteRowRefs.current.set(entry.name, el)
+                  }}
                   style={{ width: '100%', textAlign: 'left', display: 'flex', gap: 6, alignItems: 'center', border: 'none', background: 'transparent', cursor: loading ? 'default' : 'pointer', padding: '4px 6px' }}
                   onClick={() => { void browse(host, `${dirPath.replace(/\/+$/, '')}/${entry.name}`) }}
                 >
@@ -1116,11 +1246,69 @@ export function DirectoryFlow(props: DirectoryFlowOwnerProps & DirectoryFlowInje
                 </button>
               ))}
             </div>
-            <div className={css.dialogActions} style={{ gridColumn: '1' }}>
-              <button type="button" className={css.button} disabled={loading} onClick={() => setChoice('ssh')}>{tt('create.cancel')}</button>
-              <button type="button" className={`${css.button} ${css.buttonPrimary}`} disabled={loading} onClick={() => setChoice('ssh')}>
-                {tt('flow.useThisDir')}
-              </button>
+            {remoteNewFolderError !== null && (
+              <div className={css.dialogFail} role="alert">{remoteNewFolderError}</div>
+            )}
+            <div className={css.dialogActions} style={{ gridColumn: '1', flexWrap: 'wrap' }}>
+              {remoteNewFolderOpen ? (
+                <>
+                  <input
+                    className={css.localNameInput}
+                    data-test="remote-new-name"
+                    style={{ flex: '1 1 140px' }}
+                    autoFocus
+                    value={remoteNewFolderName}
+                    disabled={remoteNewFolderBusy}
+                    spellCheck={false}
+                    placeholder={tt('flow.newFolderName')}
+                    aria-label={tt('flow.newFolderName')}
+                    onChange={(event) => {
+                      setRemoteNewFolderName(event.target.value)
+                      setRemoteNewFolderError(null)
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        void confirmRemoteNewFolder()
+                      }
+                      if (event.key === 'Escape') {
+                        event.stopPropagation()
+                        closeRemoteNewFolder()
+                      }
+                    }}
+                  />
+                  <button type="button" className={css.button} disabled={remoteNewFolderBusy} onClick={closeRemoteNewFolder}>
+                    {tt('create.cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`${css.button} ${css.buttonPrimary}`}
+                    data-test="remote-new-create"
+                    disabled={remoteNewFolderBusy || remoteNewFolderName.trim() === ''}
+                    onClick={() => void confirmRemoteNewFolder()}
+                  >
+                    {remoteNewFolderBusy ? tt('flow.newFolderCreating') : tt('flow.newFolderCreate')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={`${css.button} ${css.localNewFolder}`}
+                    data-test="remote-new-folder"
+                    disabled={loading || dirPath === '' || props.createRemoteDir === undefined}
+                    onClick={openRemoteNewFolder}
+                  >
+                    <FolderPlusIcon size={14} />
+                    <span>{tt('flow.newFolder')}</span>
+                  </button>
+                  <span className={css.localFooterSpacer} />
+                  <button type="button" className={css.button} disabled={loading} onClick={() => setChoice('ssh')}>{tt('create.cancel')}</button>
+                  <button type="button" className={`${css.button} ${css.buttonPrimary}`} disabled={loading} onClick={() => setChoice('ssh')}>
+                    {tt('flow.useThisDir')}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
