@@ -231,7 +231,9 @@ jobs:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           set -euo pipefail
-          TARBALL="$(ls artifacts/*.tgz)"
+          # Absolute path: npa reads a bare `artifacts/foo.tgz` as the GitHub
+          # shorthand `owner/repo` and then runs `git ls-remote` on it.
+          TARBALL="$(ls "$GITHUB_WORKSPACE"/artifacts/*.tgz)"
           if [[ "${VERSION}" == *-* ]]; then
             DIST_TAG=next
           else
@@ -254,7 +256,9 @@ jobs:
             echo "::error::Trusted publishing failed and the NPM_TOKEN repository secret is missing. Configure an npm trusted publisher for ${PACKAGE_NAME} or add NPM_TOKEN."
             exit 1
           fi
-          TARBALL="$(ls artifacts/*.tgz)"
+          # Absolute path: see the trusted step; a bare artifacts/foo.tgz is
+          # parsed as a git spec, not a local tarball.
+          TARBALL="$(ls "$GITHUB_WORKSPACE"/artifacts/*.tgz)"
           if [[ "${VERSION}" == *-* ]]; then
             DIST_TAG=next
           else
