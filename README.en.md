@@ -450,9 +450,9 @@ One-time setup:
    `Settings → Trusted publishing` and add GitHub Actions with repository
    `XiaoPb/dsh-hardssh` and workflow file `release.yml` (leave environment empty).
    The workflow tries OIDC first; no token is needed and provenance is enabled.
-   > The first release (`v0.2.11`) cannot configure a Trusted Publisher yet because the
-   > package does not exist on npm; it will use the `NPM_TOKEN` fallback. After that
-   > first publish, add the Trusted Publisher on npm so later releases prefer OIDC.
+   > The first release cannot configure a Trusted Publisher yet because the package does
+   > not exist on npm; it will use the `NPM_TOKEN` fallback. After that first publish,
+   > add the Trusted Publisher on npm so later releases prefer OIDC.
 3. **NPM_TOKEN fallback (recommended)**: add the repository secret `NPM_TOKEN`
    (Settings → Secrets and variables → Actions). If trusted publishing fails, the
    workflow retries with this token and disables provenance (the failure may be

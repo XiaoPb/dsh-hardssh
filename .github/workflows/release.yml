@@ -124,6 +124,11 @@ jobs:
         run: |
           set -euo pipefail
           TARBALL="${{ steps.pack.outputs.tarball }}"
+          # Materialize the listing once. `tar -t | grep -q` can return SIGPIPE
+          # from tar after grep's early exit, and pipefail would then report a
+          # PRESENT path as missing.
+          TARBALL_LIST="$RUNNER_TEMP/tarball-files.txt"
+          tar -tzf "${TARBALL}" > "${TARBALL_LIST}"
           for path in \
             package/package.json \
             package/LICENSE \
@@ -134,7 +139,7 @@ jobs:
             package/lib/index.js \
             package/lib/client.js \
             package/lib/types/index.d.ts; do
-            if ! tar -tzf "${TARBALL}" | grep -qx "${path}"; then
+            if ! grep -qxF "${path}" "${TARBALL_LIST}"; then
               echo "::error::${path} is missing from the npm tarball"
               exit 1
             fi

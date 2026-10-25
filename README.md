@@ -338,7 +338,7 @@ fork/上游与许可证声明。
 2. **可信发布（推荐）**：在 npm 包页面 `Settings → Trusted publishing` 添加 GitHub Actions
    发布者：仓库 `XiaoPb/dsh-hardssh`、workflow 文件名 `release.yml`（environment 留空）。
    工作流优先走 OIDC 可信发布，不需要任何 token，并自动带 provenance。
-   > 首次发布时包在 npm 上还不存在，无法提前配置 Trusted Publisher，因此 `v0.2.11` 会先走
+   > 首次发布时包在 npm 上还不存在，无法提前配置 Trusted Publisher，因此首次发布会先走
    > `NPM_TOKEN` 回退；首次发布成功后再到 npm 包设置里补配 Trusted Publisher，后续版本即可优先 OIDC。
 3. **NPM_TOKEN 回退（建议配置）**：仓库 `Settings → Secrets and variables → Actions → New
    repository secret`，名称 `NPM_TOKEN`。可信发布失败时工作流会自动改用该 token 重试；
