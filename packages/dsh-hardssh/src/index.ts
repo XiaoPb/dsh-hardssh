@@ -151,19 +151,59 @@ export function secretStorageDriftMessage(running: 'none' | 'vault', section: un
  * @param ctx - the plugin context (provides `settings` when present).
  * @param running - the construction-time mode actually in effect.
  */
+/** The two settings-service generations this plugin reads. */
+interface SettingsSectionReader {
+  /** 0.1.x: resolve one namespace directly. */
+  get?: (ns: string) => unknown
+  /** 0.2.x SettingsForms: describe every namespace, then pick this one. */
+  describe?: (options?: { redactSecrets?: boolean }) => Array<{ ns: string; value: unknown }>
+}
+
+/** Cordis event root typed loosely so both settings event names compile. */
+interface EventRoot {
+  on(event: string, listener: (...args: unknown[]) => void): () => void
+}
+
+/** Resolve the `dsh-ssh` section on either settings-service generation. */
+function readSettingsSection(settings: SettingsSectionReader | undefined): unknown {
+  if (settings === undefined) return undefined
+  try {
+    if (typeof settings.get === 'function') return settings.get(SSH_SETTINGS_NAMESPACE)
+    if (typeof settings.describe === 'function') {
+      const descriptor = settings.describe({ redactSecrets: true })
+        .find((entry) => entry.ns === SSH_SETTINGS_NAMESPACE)
+      return descriptor?.value
+    }
+  } catch {
+    // A settings service that is not ready yet must not break plugin mount.
+    return undefined
+  }
+  return undefined
+}
+
 export function watchSecretStorageDrift(ctx: Context, running: 'none' | 'vault'): void {
   let last: string | undefined
+  const settings = ctx.get('settings') as SettingsSectionReader | undefined
   const report = (section: unknown): void => {
     const message = secretStorageDriftMessage(running, section)
     if (message === undefined || message === last) return
     last = message
     console.warn(message)
   }
-  const settings = ctx.get('settings') as { get?: (ns: string) => unknown } | undefined
-  report(settings?.get?.(SSH_SETTINGS_NAMESPACE))
-  ctx.effect(() => ctx.root.on('settings/updated', (ns, next) => {
-    if (ns === SSH_SETTINGS_NAMESPACE) report(next)
-  }), 'dsh-hardssh: secretStorage drift watch')
+  report(readSettingsSection(settings))
+  ctx.effect(() => {
+    const root = ctx.root as unknown as EventRoot
+    // 0.2.x renamed the event and stopped carrying the next section: re-read
+    // it through SettingsForms.describe(). 0.1.x keeps the old event/argument.
+    if (typeof settings?.describe === 'function') {
+      return root.on('settings/document-updated', (ns) => {
+        if (ns === SSH_SETTINGS_NAMESPACE) report(readSettingsSection(settings))
+      })
+    }
+    return root.on('settings/updated', (ns, next) => {
+      if (ns === SSH_SETTINGS_NAMESPACE) report(next)
+    })
+  }, 'dsh-hardssh: secretStorage drift watch')
 }
 
 /** Isolated-path options for one generic startup (tests inject temp dirs). */

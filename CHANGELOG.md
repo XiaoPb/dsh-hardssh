@@ -38,6 +38,28 @@
   用例改用 `defaultKeyPath` 测试接缝注入临时 key，并新增“无 key 且无 agent 必须报错”
   的确定性用例。
 
+### DSH 0.2.1+ 兼容
+
+- **兼容集与矩阵**：新增 `compat/dsh-0.2.1-rc.3.json`（当前桌面版 `runtime.json` 的
+  `desktopVersion`），并加入 CI 矩阵；该线在 Node 22.19 / 24 上通过 `typecheck`、默认套件、
+  完整套件、`build` 与 `npm pack --dry-run`。`dsh-client-runtime` 保持 `0.1.1-rc.2`、
+  `dsh-code-runtime` 用 `0.1.5-rc.3`、`dsh-invariants` 用 `0.2.0-rc.2`（各自最新可发布线）。
+- **peer 范围补 0.2.1 预发布臂**：semver 的预发布匹配规则会让
+  `>=0.1.5-rc.1 <0.1.7 || >=0.1.6-alpha.1` **排除 `0.2.1-rc.3`**。范围扩为
+  `... || >=0.2.1-rc.1`，既保留 0.2.0 稳定版（经 0.1.6 臂），也显式纳入
+  0.2.1-rc.x 与稳定版；`compat-contract` 测试锁住该臂。0.2.0-rc.2 是历史桌面线，
+  不在当前声明范围内。
+- **settings 事件换代**：0.2.x 的 `SettingsForms` 不再有 `get(ns)`，事件也从
+  `settings/updated(ns, next)` 改为 `settings/document-updated(ns, revision)`。drift
+  watcher 现在检测 `describe` 并按 0.2.x 事件重新读取 section；0.1.x 继续走旧
+  `get` + 旧事件，两条路径都有测试。
+- **0.2.x 类型面**：右侧栏 guide entry 的 `id` 与 `SubprocessHandle.control` 已补齐
+  （0.1.5 忽略多出的字段/成员）；0.2.1 的 `settings` / `slots` / `subprocess` / `fs`
+  类型面 typecheck 通过。
+- **兼容辅助脚本**：pnpm 11 不再读取 `package.json` 的 `pnpm.overrides`，`apply-set.mjs`
+  改为在 `pnpm-workspace.yaml` 生成可重复覆盖的 `overrides` 块，避免兼容矩阵的传递依赖
+  漂移；同时关闭旧的 `pnpm` 字段警告。
+
 ### SSH 工作区：远端目录浏览窗口支持新建文件夹
 
 - **远端 mkdir 路由**：`POST /api/dsh-hardssh/ws/dir` 接收 `{ alias, path, name }`，

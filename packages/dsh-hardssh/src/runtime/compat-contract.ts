@@ -10,14 +10,14 @@ import type { Context } from '@deepseek-ai/cordis'
  * (recorded as verified-incompatible, see compat/README.md).
  *
  * The declared range covers the empirically verified lines: `0.1.5-rc.1`,
- * `0.1.5-rc.2`, `0.1.6-alpha.1` and `0.1.6-alpha.2` (every component publishes
- * the 0.1.6 alphas except `dsh-code-runtime`, which stays on `0.1.5-rc.2` in
- * those sets). The `|| >=0.1.6-alpha.1` arm exists because semver only matches
- * a prerelease candidate when some comparator carries the same
- * major.minor.patch tuple with a prerelease — a plain `>=0.1.5-rc.1 <0.1.7`
- * would silently exclude `0.1.6-alpha.x`.
+ * `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2` and `0.2.1-rc.3` (the shipped
+ * Desktop build). The `|| >=0.1.6-alpha.1`, `|| >=0.2.0-rc.2` and
+ * `|| >=0.2.1-rc.1` arms exist because semver only matches a prerelease
+ * candidate when some comparator carries the same major.minor.patch tuple with
+ * a prerelease — the plain `>=0.1.5-rc.1 <0.1.7` arm would silently exclude
+ * `0.1.6-alpha.x` and, without the last arm, `0.2.1-rc.x`.
  */
-export const TESTED_DSH_RANGE = '>=0.1.5-rc.1 <0.1.7 || >=0.1.6-alpha.1'
+export const TESTED_DSH_RANGE = '>=0.1.5-rc.1 <0.1.7 || >=0.1.6-alpha.1 || >=0.2.1-rc.1'
 /** Node versions exercised in CI and accepted by package.json. */
 export const TESTED_NODE_RANGE = '^22.19.0 || >=24.0.0'
 

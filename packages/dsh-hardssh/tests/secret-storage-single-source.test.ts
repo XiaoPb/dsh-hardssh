@@ -67,15 +67,32 @@ describe('watchSecretStorageDrift (apply wiring)', () => {
   })
 
   /** Plugin-like ctx: a child of the root with a settings service provided. */
-  function harness(running: 'none' | 'vault', resolved: unknown): { ctx: Context; emitFrom: (section: unknown) => void; warn: ReturnType<typeof vi.spyOn> } {
+  function harness(
+    running: 'none' | 'vault',
+    resolved: unknown,
+    generation: 'legacy' | 'forms' = 'legacy',
+  ): { ctx: Context; emitFrom: (section: unknown) => void; warn: ReturnType<typeof vi.spyOn> } {
     const root = new Context()
     const ctx = root.extend()
-    ctx.provide('settings', { get: (ns: string) => (ns === SSH_SETTINGS_NAMESPACE ? resolved : undefined) })
+    let current = resolved
+    ctx.provide('settings', generation === 'forms'
+      ? {
+          describe: () => [{ ns: SSH_SETTINGS_NAMESPACE, value: current }],
+        }
+      : { get: (ns: string) => (ns === SSH_SETTINGS_NAMESPACE ? current : undefined) })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     watchSecretStorageDrift(ctx, running)
     // The settings service is a sibling context: emit the way it does.
     const settingsCtx = root.extend()
-    return { ctx, emitFrom: (section) => settingsCtx.emit('settings/updated', SSH_SETTINGS_NAMESPACE, section, {}, 'provider'), warn }
+    return {
+      ctx,
+      emitFrom: (section) => {
+        current = section
+        if (generation === 'forms') settingsCtx.emit('settings/document-updated', SSH_SETTINGS_NAMESPACE, 2)
+        else settingsCtx.emit('settings/updated', SSH_SETTINGS_NAMESPACE, section, {}, 'provider')
+      },
+      warn,
+    }
   }
 
   it('warns at mount when the namespace disagrees with the running mode', () => {
@@ -95,6 +112,20 @@ describe('watchSecretStorageDrift (apply wiring)', () => {
     emitFrom({ secretStorage: 'vault' })
     expect(warn).toHaveBeenCalledTimes(1)
     expect(String(warn.mock.calls[0]?.[0])).toContain("resolves to 'vault'")
+  })
+
+  it('re-checks through the 0.2 SettingsForms event', () => {
+    const { emitFrom, warn } = harness('none', { secretStorage: 'none' }, 'forms')
+    expect(warn).not.toHaveBeenCalled()
+    emitFrom({ secretStorage: 'vault' })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]?.[0])).toContain("resolves to 'vault'")
+  })
+
+  it('reads the mount-time section through SettingsForms.describe', () => {
+    const { warn } = harness('vault', { secretStorage: 'none' }, 'forms')
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]?.[0])).toContain("running 'vault'")
   })
 
   it('deduplicates a repeated identical drift', () => {

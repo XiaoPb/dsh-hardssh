@@ -2,13 +2,13 @@
 
 [![version](https://img.shields.io/badge/version-0.2.11-4D6BFE)](CHANGELOG.md)
 [![npm](https://img.shields.io/badge/npm-%40xiaopb%2Fdsh--hardssh-CB3837)](https://www.npmjs.com/package/@xiaopb/dsh-hardssh)
-[![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
+[![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1%2B-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-7a3ef3)](https://github.com/topics/dsh-plugin)
 
 **English** · [中文](./README.md)
 
-**SSH workspace + SSH operations plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).** Supports DSH **0.1.5 – 0.2.1**, **including the official Desktop (Electron) app and Android runtime**.
+**SSH workspace + SSH operations plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).** Supports DSH **0.1.5 – 0.2.1+**, **including the official Desktop (Electron) app and Android runtime**.
 
 > **Fork notice**: this repository is a modified fork of
 > [tiphareth0/dsh-hardssh](https://github.com/tiphareth0/dsh-hardssh), independently
@@ -196,7 +196,7 @@ to `dsh.profile.bundles`, then restart `dsh`.
 
 ### Desktop (Electron) dsh
 
-The official Desktop app **loads this plugin fine** (verified on 0.2.0-rc.2: plugin
+The official Desktop app **loads this plugin fine** (verified on 0.2.1-rc.3: plugin
 activation, the `/api/dsh-ssh/*` and `/api/dsh-hardssh/*` routes, and workspace
 registration into the official `ctx.workspace` all work). Its profile has two special
 rules, so the install path differs:
@@ -228,8 +228,8 @@ rules, so the install path differs:
    inside the app takes the "restart required" branch and no longer triggers the defect.
 
 > Known boundary: the Desktop's bundled dsh is the core version baked into the app
-> (currently `0.2.0-rc.2`). The declared peer range puts no upper bound on 0.2.x, so
-> later 0.2.x builds load as well.
+> (currently `0.2.1-rc.3`). The declared peer range puts no upper bound on 0.2.x, so
+> later 0.2.x stable builds load as well.
 
 npm package page: https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
@@ -241,10 +241,10 @@ npm package page: https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
 | Plugin | Verified DSH | Node | Remote hosts |
 |---|---|---|---|
-| `0.2.11` (current, fork) | **`0.2.0-rc.2` (Desktop/Electron) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (four 0.1.x matrix lines green: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
-| `0.2.5` – `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (the same four lines) | same | same |
+| `0.2.11` (current, fork) | **`0.2.1-rc.3` (Desktop/Electron, CI matrix + complete suite) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1` (four 0.1.x matrix lines plus the 0.2.1-rc.3 line: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`, `0.2.1-rc.3`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
+| `0.2.5` – `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (the old four lines; no explicit 0.2.1 prerelease arm) | same | same |
 
-> About the 0.2.0 line: the host half (plugin activation, routes, workspace registration into the official `ctx.workspace`) was verified on the **Desktop app running dsh 0.2.0-rc.2**, and the client session-follow was ported to the 0.2.0 session API (`retainedBy.mainView`). The four 0.1.x lines are covered by the `compat/dsh-*.json` sets and the CI matrix; **a 0.2.0 compat set is not in the matrix yet** (see the rules in `compat/README.md`).
+> About the 0.2.1 line: the current Desktop runtime is **`0.2.1-rc.3`**, covered by `compat/dsh-0.2.1-rc.3.json` and the CI matrix. `settings/document-updated`, the sidebar-right guide `id`, and `SubprocessHandle.control` are adapted for 0.2.x while 0.1.x behaviour stays intact. 0.2.0-rc.2 is the historical Desktop line whose host half and client session-follow were verified; the declared range starts at 0.2.1-rc.1, with 0.2.1-rc.3 as its successor in the matrix.
 
 > The earlier `0.1.5-alpha.1` is **not** supported: `dsh-client-ui-slots@0.1.5-alpha.1` declares no `main` slot, so the workspace panel has nowhere to mount (the matrix fails typecheck). See `compat/README.md`.
 

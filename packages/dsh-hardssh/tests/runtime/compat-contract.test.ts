@@ -92,10 +92,19 @@ describe('runtime compatibility contract', () => {
   })
 
   it('publishes bounded compatibility claims, never an unbounded wildcard', () => {
-    expect(TESTED_DSH_RANGE).toBe('>=0.1.5-rc.1 <0.1.7 || >=0.1.6-alpha.1')
+    // The 0.2.1-rc.x arm is required: semver excludes a prerelease unless a
+    // comparator carries that same major.minor.patch tuple.
+    expect(TESTED_DSH_RANGE).toBe('>=0.1.5-rc.1 <0.1.7 || >=0.1.6-alpha.1 || >=0.2.1-rc.1')
     expect(TESTED_NODE_RANGE).toContain('22.19')
     for (const [name, range] of Object.entries(packageJson.peerDependencies)) {
-      if (name.startsWith('@deepseek-ai/')) expect(range, `${name} must be bounded`).not.toBe('*')
+      if (name.startsWith('@deepseek-ai/')) {
+        expect(range, `${name} must be bounded`).not.toBe('*')
+        // DSH component peers share the line range; cordis/schemastery have
+        // their own version schemes and are covered by their own ranges.
+        if (range.includes('0.1.5-rc.1')) {
+          expect(range, `${name} must admit the shipped 0.2.1-rc.x line`).toContain('>=0.2.1-rc.1')
+        }
+      }
     }
   })
 })

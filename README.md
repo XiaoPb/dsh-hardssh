@@ -2,13 +2,13 @@
 
 [![version](https://img.shields.io/badge/version-0.2.11-4D6BFE)](CHANGELOG.md)
 [![npm](https://img.shields.io/badge/npm-%40xiaopb%2Fdsh--hardssh-CB3837)](https://www.npmjs.com/package/@xiaopb/dsh-hardssh)
-[![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
+[![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1%2B-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-7a3ef3)](https://github.com/topics/dsh-plugin)
 
 **中文** · [English](./README.en.md)
 
-**【DeepSeek Harness (DSH) 的 SSH 工作区 + SSH 运维插件】** · 已适配 DSH **0.1.5 ~ 0.2.1**，**含官方桌面版（Electron）与 Android 端**
+**【DeepSeek Harness (DSH) 的 SSH 工作区 + SSH 运维插件】** · 已适配 DSH **0.1.5 ~ 0.2.1+**，**含官方桌面版（Electron）与 Android 端**
 
 > **Fork 说明**：本仓库是 [tiphareth0/dsh-hardssh](https://github.com/tiphareth0/dsh-hardssh) 的修改版，
 > 按 BSD-3-Clause 许可独立发布为 `@xiaopb/dsh-hardssh`。原始版权、修改声明与完整许可见
@@ -133,7 +133,7 @@ dsh plugin --profile web add </path/to/dsh-hardssh>/dist/xiaopb-dsh-hardssh-0.2.
 
 ### 桌面版（Electron）dsh
 
-官方桌面版**可以正常加载本插件**（0.2.0-rc.2 实测：插件激活、`/api/dsh-ssh/*` 与 `/api/dsh-hardssh/*` 路由、工作区注册进官方 `ctx.workspace` 均正常）。但它的 profile 有两条特殊规则，装法与其他版本不同：
+官方桌面版**可以正常加载本插件**（0.2.1-rc.3 实测：插件激活、`/api/dsh-ssh/*` 与 `/api/dsh-hardssh/*` 路由、工作区注册进官方 `ctx.workspace` 均正常）。但它的 profile 有两条特殊规则，装法与其他版本不同：
 
 1. **普通 CLI 不能管理桌面版的 `desktop` profile**——`dsh plugin --profile desktop …` 会被直接拒绝：
    ```
@@ -148,7 +148,7 @@ dsh plugin --profile web add </path/to/dsh-hardssh>/dist/xiaopb-dsh-hardssh-0.2.
    **正确做法：完全退出桌面版 → 安装（改 `package.json` 的 `dependencies` 与 `dsh.profile.bundles`，在 profile 目录跑 `pnpm install`，或用上面那条自带 CLI 命令）→ 再启动。**冷启动应用补丁是正常的路径。
    一旦插件名已经在 `dsh.profile.bundles` 里，之后在应用内停用/启用会走「需要重启」分支，不会再触发这个问题。
 
-> 已知边界：桌面版自带 dsh 的版本号即应用内置的核心版本（当前 `0.2.0-rc.2`）；插件声明的 peer 区间不设 0.2.x 上限，因此 0.2.x 的后续版本可直接加载。
+> 已知边界：桌面版自带 dsh 的版本号即应用内置的核心版本（当前 `0.2.1-rc.3`）；插件声明的 peer 区间不设 0.2.x 上限，因此 0.2.x 的后续稳定版本可直接加载。
 
 NPM 包页面：https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
@@ -159,10 +159,10 @@ NPM 包页面：https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
 | 插件版本 | 已验证 DSH | Node | 远端主机 |
 |---|---|---|---|
-| `0.2.11`（当前，fork） | **`0.2.0-rc.2`（桌面版 Electron）+ `0.2.1-rc.2`（Android runtime）实测** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（0.1.x 矩阵四条线全绿：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
-| `0.2.5` ~ `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（同上四条线） | 同上 | 同上 |
+| `0.2.11`（当前，fork） | **`0.2.1-rc.3`（桌面版 Electron，CI 矩阵与完整套件实测）+ `0.2.1-rc.2`（Android runtime）** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1`（0.1.x 矩阵四条线全绿 + 0.2.1-rc.3 线：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.2.1-rc.3`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
+| `0.2.5` ~ `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（旧四条线；不含 0.2.1 显式预发布臂） | 同上 | 同上 |
 
-> 0.2.0 线的说明：宿主侧（插件激活、路由、工作区注册进官方 `ctx.workspace`）已在 **桌面版 0.2.0-rc.2** 上实测通过；客户端会话跟随已按 0.2.0 的新会话 API（`retainedBy.mainView`）适配。0.1.x 的四条线由 `compat/dsh-*.json` 兼容集与 CI 矩阵保证；**0.2.0 的兼容集尚未加入矩阵**（见 `compat/README.md` 的约定）。
+> 0.2.1 线的说明：当前桌面版运行时为 **`0.2.1-rc.3`**，已加入 `compat/dsh-0.2.1-rc.3.json` 与 CI 矩阵；`settings/document-updated`、右侧栏 guide `id`、`SubprocessHandle.control` 均已按 0.2.x 适配，0.1.x 行为保持。0.2.0-rc.2 是历史桌面线，其宿主侧与客户端会话跟随曾实测通过；当前声明范围从 0.2.1-rc.1 起（0.2.1-rc.3 是其后继线，已加入矩阵）。
 
 > 更早的 `0.1.5-alpha.1` **不支持**：`dsh-client-ui-slots@0.1.5-alpha.1` 没有 `main` 槽位，工作区面板无处挂载（矩阵实测 typecheck 直接失败）。见 `compat/README.md`。
 
