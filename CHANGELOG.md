@@ -16,11 +16,27 @@
   `files` 清单，发布 tarball 会携带。
 - **CI/CD**：新增 `.github/workflows/release.yml`。推送 `v*` tag 触发完整流水线：
   tag/版本/包名校验 → `typecheck` → `test` → `build` → `npm pack` → 产物内容校验 →
-  npm 发布（`--access public --provenance`，预发布版本自动用 `next` dist-tag）→
-  生成带版本信息、提交统计、SHA-256、分类变更、贡献者与对比链接的 GitHub Release。
-  支持 `workflow_dispatch` 手动验证/打包，勾选 `publish` 可按当前版本补发 npm。
+  npm 发布 → 生成带版本信息、提交统计、SHA-256、分类变更、贡献者与对比链接的
+  GitHub Release。支持 `workflow_dispatch` 手动验证/打包，勾选 `publish` 可按当前版本补发 npm。
+- **npm 双通道发布**：优先 **trusted publishing（GitHub OIDC，带 provenance）**；失败时自动
+  回退 **`NPM_TOKEN`**（`--no-provenance`），并在 job summary 标明实际使用的通道与两种
+  outcome。`-alpha`/`-beta`/`-rc` 版本自动用 `next` dist-tag，正式版用 `latest`。
+  首次发布时包尚不存在、无法提前配置 Trusted Publisher，因此 `v0.2.11` 会走 token 回退；
+  首次发布后再补配 OIDC。
 - **文档**：README/README.en 增加 fork 说明、npm/GitHub Releases 安装方式与「发布」
-  一节（npm scope、`NPM_TOKEN`、`dsh-plugin` topic、provenance 与发布步骤）。
+  一节（npm scope、npm trusted publisher 配置、`NPM_TOKEN` 回退、`dsh-plugin` topic、
+  provenance 与发布步骤）。
+
+### 修复：CI 无默认私钥时的认证顺序用例失败
+
+- **现象**：Linux runner 没有 `~/.ssh/id_*`，`buildConnectConfig` 的
+  `private key not found` 在用例自身断言前抛出；另外 `{ kind: 'password', keyPath }`
+  的显式 key 被忽略，只靠开发机默认私钥“碰巧”通过，导致 compat 矩阵与 release
+  verify 全红。
+- **修复**：`keyPath` 现在对所有 auth kind 生效（导入的 host 可能同时带 IdentityFile
+  与密码，仍应 key-first）；passphrase 只跟随实际配置的 key。两个依赖宿主机默认私钥的
+  用例改用 `defaultKeyPath` 测试接缝注入临时 key，并新增“无 key 且无 agent 必须报错”
+  的确定性用例。
 
 ### SSH 工作区：远端目录浏览窗口支持新建文件夹
 

@@ -201,22 +201,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          registry-url: 'https://registry.npmjs.org'
 
-      - name: Check npm token
+      # Two independent auth paths, selected at run time:
+      #  1. npm trusted publishing (OIDC): no token at all, provenance enabled.
+      #  2. NPM_TOKEN fallback: used only when (1) fails. Provenance is disabled
+      #     on that path because it may be exactly what failed.
+      - name: Prepare npm configs
         shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::The NPM_TOKEN repository secret is missing. Create an npm automation/granular token with publish rights for @xiaopb and add it as NPM_TOKEN."
-            exit 1
-          fi
+          set -euo pipefail
+          printf 'registry=https://registry.npmjs.org/\n' > "$RUNNER_TEMP/npmrc-trusted"
+          {
+            echo 'registry=https://registry.npmjs.org/'
+            echo '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}'
+          } > "$RUNNER_TEMP/npmrc-token"
+          echo "Prepared $RUNNER_TEMP/npmrc-trusted and $RUNNER_TEMP/npmrc-token"
 
-      - name: Publish
+      - name: Publish with trusted publishing (OIDC)
+        id: trusted
+        continue-on-error: true
         shell: bash
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npmrc-trusted
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           set -euo pipefail
@@ -226,15 +232,60 @@ jobs:
           else
             DIST_TAG=latest
           fi
-          echo "Publishing $(basename "${TARBALL}") as ${PACKAGE_NAME}@${VERSION} (dist-tag ${DIST_TAG})"
+          echo "Attempting trusted publishing (OIDC) for ${PACKAGE_NAME}@${VERSION} (dist-tag ${DIST_TAG})"
           npm publish "${TARBALL}" --access public --provenance --tag "${DIST_TAG}"
+
+      - name: Publish with NPM_TOKEN fallback
+        id: fallback
+        if: steps.trusted.outcome == 'failure'
+        shell: bash
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npmrc-token
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::Trusted publishing failed and the NPM_TOKEN repository secret is missing. Configure an npm trusted publisher for ${PACKAGE_NAME} or add NPM_TOKEN."
+            exit 1
+          fi
+          TARBALL="$(ls artifacts/*.tgz)"
+          if [[ "${VERSION}" == *-* ]]; then
+            DIST_TAG=next
+          else
+            DIST_TAG=latest
+          fi
+          echo "Trusted publishing failed; falling back to NPM_TOKEN for ${PACKAGE_NAME}@${VERSION} (dist-tag ${DIST_TAG}, no provenance)"
+          npm publish "${TARBALL}" --access public --no-provenance --tag "${DIST_TAG}"
+
+      - name: Summarize publish result
+        if: always()
+        shell: bash
+        env:
+          TRUSTED: ${{ steps.trusted.outcome }}
+          FALLBACK: ${{ steps.fallback.outcome }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${TRUSTED}" = "success" ]; then
+            METHOD='trusted publishing (OIDC)'
+            PROVENANCE='enabled (`--provenance`)'
+          elif [ "${FALLBACK}" = "success" ]; then
+            METHOD='NPM_TOKEN fallback'
+            PROVENANCE='disabled (trusted publishing failed)'
+          else
+            echo "::error::npm publish failed via trusted publishing and the NPM_TOKEN fallback"
+            exit 1
+          fi
+          echo "Published ${PACKAGE_NAME}@${VERSION} via ${METHOD}"
           {
             echo "## npm publish"
             echo ""
             echo "- Package: [\`${PACKAGE_NAME}@${VERSION}\`](https://www.npmjs.com/package/${PACKAGE_NAME}/v/${VERSION})"
-            echo "- dist-tag: \`${DIST_TAG}\`"
-            echo "- Tarball: \`$(basename "${TARBALL}")\`"
-            echo "- Provenance: enabled (\`--provenance\`)"
+            echo "- Method: ${METHOD}"
+            echo "- Provenance: ${PROVENANCE}"
+            echo "- Trusted publish outcome: \`${TRUSTED}\`"
+            echo "- NPM_TOKEN fallback outcome: \`${FALLBACK}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Tag-only GitHub Release with complete metadata and the same tarball.

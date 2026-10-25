@@ -445,14 +445,22 @@ license attribution.
 
 One-time setup:
 
-1. Create/join the `@xiaopb` npm scope (names must be lowercase) and an npm token with
-   publish rights.
-2. Add the token as the repository secret `NPM_TOKEN` (Settings → Secrets and variables
-   → Actions).
-3. Add the `dsh-plugin` repository topic (Settings → About → gear, or
+1. Create/join the `@xiaopb` npm scope (names must be lowercase).
+2. **Trusted publishing (preferred)**: on the npm package page open
+   `Settings → Trusted publishing` and add GitHub Actions with repository
+   `XiaoPb/dsh-hardssh` and workflow file `release.yml` (leave environment empty).
+   The workflow tries OIDC first; no token is needed and provenance is enabled.
+   > The first release (`v0.2.11`) cannot configure a Trusted Publisher yet because the
+   > package does not exist on npm; it will use the `NPM_TOKEN` fallback. After that
+   > first publish, add the Trusted Publisher on npm so later releases prefer OIDC.
+3. **NPM_TOKEN fallback (recommended)**: add the repository secret `NPM_TOKEN`
+   (Settings → Secrets and variables → Actions). If trusted publishing fails, the
+   workflow retries with this token and disables provenance (the failure may be
+   OIDC/provenance itself).
+4. Add the `dsh-plugin` repository topic (Settings → About → gear, or
    `gh repo edit XiaoPb/dsh-hardssh --add-topic dsh-plugin`).
-4. Provenance: the workflow requests `id-token: write` and publishes with
-   `--provenance`; public repositories get a verifiable npm provenance statement.
+5. Provenance: `id-token: write` + `npm publish --provenance` on the trusted path;
+   the token fallback has no provenance.
 
 Release:
 
@@ -464,6 +472,10 @@ git commit -m "chore(release): v0.2.11"
 git tag v0.2.11
 git push origin master --tags
 ```
+
+The publish job tries trusted publishing (OIDC + provenance) first and automatically
+falls back to `NPM_TOKEN` (without provenance) if that fails. Pre-release versions use
+the `next` dist-tag; stable versions use `latest`.
 
 A manual `workflow_dispatch` run only verifies and packs by default; tick `publish` to
 publish the current `package.json` version without creating a tag. Do not publish by

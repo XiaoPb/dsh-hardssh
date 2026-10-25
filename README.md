@@ -334,14 +334,19 @@ fork/上游与许可证声明。
 
 ### 一次性准备
 
-1. **npm scope**：在 npm 创建/加入 `@xiaopb` scope（包名必须小写），并生成 Automation 或
-   Granular Access Token（对 `@xiaopb` 有 publish 权限）。
-2. **GitHub secret**：仓库 `Settings → Secrets and variables → Actions → New repository secret`，
-   名称 `NPM_TOKEN`。工作流用 `actions/setup-node` 的 `registry-url` 与 `NODE_AUTH_TOKEN` 发布。
-3. **GitHub 仓库 topic**：在仓库首页 About 旁点齿轮，添加 `dsh-plugin`（便于社区检索）；
+1. **npm scope**：在 npm 创建/加入 `@xiaopb` scope（包名必须小写）。
+2. **可信发布（推荐）**：在 npm 包页面 `Settings → Trusted publishing` 添加 GitHub Actions
+   发布者：仓库 `XiaoPb/dsh-hardssh`、workflow 文件名 `release.yml`（environment 留空）。
+   工作流优先走 OIDC 可信发布，不需要任何 token，并自动带 provenance。
+   > 首次发布时包在 npm 上还不存在，无法提前配置 Trusted Publisher，因此 `v0.2.11` 会先走
+   > `NPM_TOKEN` 回退；首次发布成功后再到 npm 包设置里补配 Trusted Publisher，后续版本即可优先 OIDC。
+3. **NPM_TOKEN 回退（建议配置）**：仓库 `Settings → Secrets and variables → Actions → New
+   repository secret`，名称 `NPM_TOKEN`。可信发布失败时工作流会自动改用该 token 重试；
+   该回退路径关闭 provenance（失败原因可能正是 OIDC/provenance）。
+4. **GitHub 仓库 topic**：在仓库首页 About 旁点齿轮，添加 `dsh-plugin`（便于社区检索）；
    或本机执行 `gh repo edit XiaoPb/dsh-hardssh --add-topic dsh-plugin`。
-4. **Provenance**：工作流已声明 `id-token: write` 并使用 `npm publish --provenance`；
-   公开仓库会生成可验证的 npm provenance 证明。若改为私有仓库，需在 npm 侧关闭 provenance 或调整配置。
+5. **Provenance**：可信发布路径使用 `id-token: write` + `npm publish --provenance`，公开仓库会
+   生成可验证的 npm provenance 证明；`NPM_TOKEN` 回退路径不生成。
 
 ### 发布步骤
 
@@ -360,8 +365,9 @@ git push origin master --tags
 
 - `verify`：`pnpm install --frozen-lockfile` → `typecheck` → `test` → `build` → `npm pack`，
   校验 tag == 包版本、包名、LICENSE/NOTICE/README 均在 tarball 中；
-- `publish-npm`：只在 tag 触发，发布 tarball 到 npm（`--access public --provenance`；
-  `-alpha`/`-beta`/`-rc` 版本自动使用 `next` dist-tag，正式版用 `latest`）；
+- `publish-npm`：只在 tag 触发，发布 tarball 到 npm。先尝试**可信发布（OIDC，带 provenance）**；
+  失败时自动回退 **`NPM_TOKEN`**（`--no-provenance`）。`-alpha`/`-beta`/`-rc` 版本自动使用
+  `next` dist-tag，正式版用 `latest`；
 - `release`：生成完整 release notes 并创建 GitHub Release，附加 `.tgz` 与 `SHA256SUMS`。
 
 也支持在 Actions 页面手动 `workflow_dispatch`：默认只跑验证与打包、不发布；
