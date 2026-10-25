@@ -130,6 +130,20 @@ export function sshListTool(engine: SshEngine) {
                 environment: { type: 'string' },
                 tags: { type: 'array', items: { type: 'string' }, required: true },
                 location: { type: 'string' },
+                // A host with a real command guard carries this field; an empty
+                // policy is canonicalized away by the store, but the schema has
+                // to accept both shapes (a host-side output validation failure
+                // fails the whole call, not just this row).
+                commandPolicy: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    deny: { type: 'array', items: { type: 'string' }, required: true },
+                    denyCommands: { type: 'array', items: { type: 'string' } },
+                    allowCommands: { type: 'array', items: { type: 'string' } },
+                    hint: { type: 'string' },
+                  },
+                },
                 createdAt: { type: 'integer', required: true },
                 updatedAt: { type: 'integer', required: true },
               },

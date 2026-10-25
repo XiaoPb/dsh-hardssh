@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { HostStore, validateAlias, validateHostPayload } from '../../src/ssh/store.ts'
-import type { HostPayload } from '../../src/ssh/protocol.ts'
+import type { HostPayload, SshCommandPolicy } from '../../src/ssh/protocol.ts'
 
 const dirs: string[] = []
 
@@ -101,6 +101,79 @@ describe('CRUD', () => {
     const entry = store.create({ ...basePayload, auth: { kind: 'key', keyPath: '~/keys/id' } })
     expect(entry.auth.keyPath).not.toContain('~')
     expect(entry.auth.keyPath).toContain(join('keys', 'id'))
+  })
+})
+
+describe('commandPolicy canonicalization', () => {
+  /** Seed a store file directly, mimicking one written by an older build. */
+  function seedStore(hosts: unknown[]): HostStore {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-ssh-store-seed-'))
+    dirs.push(dir)
+    const storePath = join(dir, 'hosts.json')
+    writeFileSync(storePath, JSON.stringify({ version: 1, hosts }, null, 2), 'utf8')
+    return new HostStore(storePath, join(dir, 'config'))
+  }
+
+  const storedHost = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    alias: 'web-01',
+    host: '192.168.1.10',
+    port: 22,
+    user: 'root',
+    auth: { kind: 'password', password: 'pw' },
+    proxyJump: [],
+    tags: [],
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  })
+
+  const guard: SshCommandPolicy = { deny: ['python'], hint: 'use srun' }
+
+  it('does not persist the form\'s empty policy on create', () => {
+    const store = makeStore()
+    const entry = store.create({ ...basePayload, commandPolicy: { deny: [] } })
+    expect(entry.commandPolicy).toBeUndefined()
+    expect('commandPolicy' in store.summarize(entry)).toBe(false)
+    // Nor does it reach the file.
+    expect(readFileSync(store.path, 'utf8')).not.toContain('commandPolicy')
+  })
+
+  it('keeps a real guard on the entry and in the summary', () => {
+    const store = makeStore()
+    const entry = store.create({ ...basePayload, commandPolicy: guard })
+    expect(entry.commandPolicy).toEqual(guard)
+    expect(store.summarize(entry).commandPolicy).toEqual(guard)
+  })
+
+  it('clears a guard when update sends the empty policy', () => {
+    const store = makeStore()
+    store.create({ ...basePayload, commandPolicy: guard })
+    const updated = store.update('web-01', { commandPolicy: { deny: [] } })
+    expect(updated.commandPolicy).toBeUndefined()
+    expect(store.find('web-01')?.commandPolicy).toBeUndefined()
+    expect(readFileSync(store.path, 'utf8')).not.toContain('commandPolicy')
+  })
+
+  it('replaces a guard when update sends a different one', () => {
+    const store = makeStore()
+    store.create({ ...basePayload, commandPolicy: guard })
+    const updated = store.update('web-01', { commandPolicy: { deny: [], denyCommands: ['Rscript'] } })
+    expect(updated.commandPolicy).toEqual({ deny: [], denyCommands: ['Rscript'] })
+  })
+
+  it('self-heals a file that already stores an empty policy', () => {
+    // The Android symptom: every host edited in the GUI carried `{ deny: [] }`
+    // and `ssh_list` then failed its own output schema.
+    const store = seedStore([storedHost({ commandPolicy: { deny: [] } })])
+    expect(store.find('web-01')?.commandPolicy).toBeUndefined()
+    const entry = store.find('web-01')
+    expect(entry).toBeDefined()
+    expect('commandPolicy' in store.summarize(entry!)).toBe(false)
+  })
+
+  it('normalizes (but keeps) a real stored guard while reading', () => {
+    const store = seedStore([storedHost({ commandPolicy: { deny: ['python'], denyCommands: [''] } })])
+    expect(store.find('web-01')?.commandPolicy).toEqual({ deny: ['python'] })
   })
 })
 
@@ -345,9 +418,10 @@ describe('commandPolicy (per-host command guard)', () => {
     store.create(basePayload)
     store.update('web-01', { commandPolicy: policy })
     expect(store.find('web-01')!.commandPolicy).toEqual(policy)
-    // An explicit empty policy clears the guard.
+    // An explicit empty policy clears the guard — "no guard" is one canonical
+    // state (absent), never an inert `{ deny: [] }` object.
     store.update('web-01', { commandPolicy: { deny: [] } })
-    expect(store.find('web-01')!.commandPolicy).toEqual({ deny: [] })
+    expect(store.find('web-01')!.commandPolicy).toBeUndefined()
   })
 
   it('rejects an invalid policy on create and update', () => {

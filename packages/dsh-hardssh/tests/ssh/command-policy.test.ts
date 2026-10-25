@@ -13,6 +13,7 @@ import {
   checkCommand,
   commandGuardTargets,
   commandName,
+  normalizeCommandPolicy,
   refusalMessage,
   validateCommandPolicy,
 } from '../../src/ssh/command-policy.ts'
@@ -174,5 +175,38 @@ describe('commandName (unwrap: bash -c / sudo / env / paths)', () => {
   it('isEmpty considers both mechanisms', () => {
     expect(CompiledCommandPolicy.compile({ deny: [] }).isEmpty).toBe(true)
     expect(CompiledCommandPolicy.compile({ deny: [], denyCommands: ['python'] }).isEmpty).toBe(false)
+  })
+})
+
+describe('normalizeCommandPolicy (canonical "no guard")', () => {
+  it('drops the empty forms the host form can submit', () => {
+    expect(normalizeCommandPolicy(undefined)).toBeUndefined()
+    // The exact object the GUI sends when every guard field is blank.
+    expect(normalizeCommandPolicy({ deny: [] })).toBeUndefined()
+    expect(normalizeCommandPolicy({ deny: ['', '   '] })).toBeUndefined()
+    // Comments are ignored by the matcher, so a comment-only list denies nothing.
+    expect(normalizeCommandPolicy({ deny: ['# just a note'] })).toBeUndefined()
+    // Nothing to deny: allowCommands can only exempt, and a hint is only shown
+    // by a rule that matched.
+    expect(normalizeCommandPolicy({ deny: [], allowCommands: ['sbatch'] })).toBeUndefined()
+    expect(normalizeCommandPolicy({ deny: [], hint: 'use srun' })).toBeUndefined()
+    // Blank name-list entries are no-op too.
+    expect(normalizeCommandPolicy({ deny: [], denyCommands: ['', '  '] })).toBeUndefined()
+  })
+
+  it('keeps a real guard, including the no-op decorations around it', () => {
+    expect(normalizeCommandPolicy(LOGIN_NODE)).toEqual(LOGIN_NODE)
+    expect(normalizeCommandPolicy({ deny: ['python'], hint: '  ' })).toEqual({ deny: ['python'] })
+    expect(normalizeCommandPolicy({ deny: [], denyCommands: [' python ', ''] }))
+      .toEqual({ deny: [], denyCommands: ['python'] })
+    // A hand-edited invalid regex must survive canonicalization (the compiler
+    // skips it; dropping the whole policy would silently remove the guard).
+    expect(normalizeCommandPolicy({ deny: ['python('] })).toEqual({ deny: ['python('] })
+  })
+
+  it('never returns an object that denies nothing', () => {
+    for (const empty of [{ deny: [] }, { deny: [''], allowCommands: [] }, { deny: [], hint: '' }]) {
+      expect(CompiledCommandPolicy.compile(normalizeCommandPolicy(empty)).isEmpty).toBe(true)
+    }
   })
 })

@@ -5,7 +5,10 @@
  *  - save parses each non-blank line into `deny` (a `#`-line is preserved and
  *    skipped by the engine at match time);
  *  - an emptied form saves `{ deny: [] }` → clears the host's guard (the
- *    confirmed "form is truth" semantics).
+ *    confirmed "form is truth" semantics);
+ *  - a host that never had a guard gets NO commandPolicy field at all: the
+ *    inert `{ deny: [] }` object used to leak into `SshHostSummary` and broke
+ *    `ssh_list`'s output schema on Android.
  */
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -94,6 +97,15 @@ describe('HostFormDialog commandPolicy', () => {
     await flush()
     const patch = updateHost.mock.calls[0]![1] as HostPayload
     expect(patch.commandPolicy).toEqual({ deny: [] })
+  })
+
+  it('omits commandPolicy for a host that never had a guard', async () => {
+    const updateHost = vi.fn(() => Promise.resolve(host()))
+    render(host(), { updateHost, createHost: vi.fn() })
+    clickSave()
+    await flush()
+    const patch = updateHost.mock.calls[0]![1] as HostPayload
+    expect('commandPolicy' in patch).toBe(false)
   })
 
   it('round-trips denyCommands/allowCommands name lists', async () => {

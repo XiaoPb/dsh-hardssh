@@ -200,6 +200,50 @@ function normalizeName(entry: string): string | undefined {
   return token === '' || token.startsWith('#') ? undefined : token
 }
 
+/** Trim a name list and drop the entries the matcher ignores. */
+function collectNames(entries: readonly string[] | undefined): string[] {
+  return (entries ?? []).map(normalizeName).filter((name): name is string => name !== undefined)
+}
+
+/**
+ * Collapse a stored policy to its canonical form: `undefined` when it can never
+ * refuse anything, otherwise a copy without the no-op fields.
+ *
+ * The host form always sends a policy object ("the form is truth": an emptied
+ * form clears the guard), so `{ deny: [] }` used to be PERSISTED for every host
+ * created or edited with the guard fields left blank. That empty object is not
+ * inert: `SshHostSummary.commandPolicy` carries it into every summary, and the
+ * `ssh_list` tool's declared output (`additionalProperties: false`) rejected
+ * the payload, failing the whole tool on every host the GUI had touched.
+ *
+ * "Can refuse" means: at least one effective regex source or one denied command
+ * name. A hint alone, or `allowCommands` alone, cannot deny anything, so such a
+ * policy is dropped too (the refusal hint is only ever shown by a rule).
+ *
+ * @param policy - stored policy shape, possibly the empty form.
+ * @returns the canonical policy, or `undefined` for "no guard".
+ */
+export function normalizeCommandPolicy(policy: SshCommandPolicy | undefined): SshCommandPolicy | undefined {
+  if (policy === undefined) return undefined
+  // Deliberately not `CompiledCommandPolicy.isEmpty`: a hand-edited file can
+  // hold an invalid regex that the compiler skips, and that must not silently
+  // erase the operator's policy on the next save.
+  const deniesSomething = (policy.deny ?? []).some(entry => normalizeName(entry) !== undefined)
+  const deniesNames = (policy.denyCommands ?? []).some(name => normalizeName(name) !== undefined)
+  if (!deniesSomething && !deniesNames) return undefined
+  const denyCommands = collectNames(policy.denyCommands)
+  const allowCommands = collectNames(policy.allowCommands)
+  const hint = policy.hint === undefined || policy.hint.trim() === '' ? undefined : policy.hint
+  return {
+    // Kept verbatim: blank and `#` lines are ignored by the matcher, but a `#`
+    // note is user content the form round-trips on purpose.
+    deny: [...policy.deny ?? []],
+    ...(denyCommands.length > 0 ? { denyCommands } : {}),
+    ...(allowCommands.length > 0 ? { allowCommands } : {}),
+    ...(hint !== undefined ? { hint } : {}),
+  }
+}
+
 /** A host's rules, compiled once and reusable by both enforcement points. */
 export class CompiledCommandPolicy {
   private constructor(

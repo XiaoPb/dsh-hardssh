@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { HostPayload, ImportResult, SshAuthKind, SshHostEntry, SshHostSummary } from './protocol.ts'
-import { validateCommandPolicy } from './command-policy.ts'
+import { normalizeCommandPolicy, validateCommandPolicy } from './command-policy.ts'
 
 /** File format version. */
 const FORMAT_VERSION = 1
@@ -241,6 +241,10 @@ export class HostStore {
     if (entry.auth.kind === 'key' && entry.auth.keyPath) {
       keyReady = existsSync(expandHome(entry.auth.keyPath))
     }
+    // Canonicalize once more on the way out: `ssh_list` declares this field in
+    // its output schema, so an all-empty policy (`{ deny: [] }`, written by
+    // older builds) must never reach the agent as a live property.
+    const commandPolicy = normalizeCommandPolicy(entry.commandPolicy)
     return {
       alias: entry.alias,
       host: entry.host,
@@ -255,7 +259,7 @@ export class HostStore {
       ...(entry.environment !== undefined ? { environment: entry.environment } : {}),
       tags: [...entry.tags],
       ...(entry.location !== undefined ? { location: entry.location } : {}),
-      ...(entry.commandPolicy !== undefined ? { commandPolicy: entry.commandPolicy } : {}),
+      ...(commandPolicy !== undefined ? { commandPolicy } : {}),
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
     }
@@ -276,6 +280,9 @@ export class HostStore {
     // explicit check narrows the type for the entry construction below.
     const auth = payload.auth
     if (auth === undefined) throw new Error('auth is required')
+    // An all-empty policy is "no guard", not a stored object: keeping the
+    // form's `{ deny: [] }` on the entry would leak it into every summary.
+    const commandPolicy = normalizeCommandPolicy(payload.commandPolicy)
     const entry: SshHostEntry = {
       alias,
       host: payload.host.trim(),
@@ -293,7 +300,7 @@ export class HostStore {
       environment: payload.environment?.trim() || undefined,
       tags: [...(payload.tags ?? [])].map(tag => tag.trim()).filter(tag => tag !== ''),
       location: payload.location?.trim() || undefined,
-      ...(payload.commandPolicy !== undefined ? { commandPolicy: payload.commandPolicy } : {}),
+      ...(commandPolicy !== undefined ? { commandPolicy } : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -354,7 +361,14 @@ export class HostStore {
     if (patch.environment !== undefined) entry.environment = patch.environment.trim() || undefined
     if (patch.tags !== undefined) entry.tags = [...patch.tags].map(tag => tag.trim()).filter(tag => tag !== '')
     if (patch.location !== undefined) entry.location = patch.location.trim() || undefined
-    if (patch.commandPolicy !== undefined) entry.commandPolicy = patch.commandPolicy
+    if (patch.commandPolicy !== undefined) {
+      // A policy in the patch means "this is the guard now": an all-empty one
+      // therefore CLEARS it (the form's confirmed semantics) instead of being
+      // stored as an inert object.
+      const commandPolicy = normalizeCommandPolicy(patch.commandPolicy)
+      if (commandPolicy === undefined) delete entry.commandPolicy
+      else entry.commandPolicy = commandPolicy
+    }
     entry.updatedAt = Date.now()
     this.save(file)
     return entry
@@ -409,6 +423,17 @@ export class HostStore {
       const parsed = JSON.parse(readFileSync(this.path, 'utf8')) as StoreFile
       if (typeof parsed !== 'object' || parsed === null || !Array.isArray(parsed.hosts)) {
         throw new Error('store file shape invalid')
+      }
+      // Self-heal files written before the empty policy was canonicalized:
+      // older builds persisted `commandPolicy: { deny: [] }` for every host
+      // edited in the GUI, which made `ssh_list` fail its own output contract.
+      // Fixing reads (not just writes) means an affected Android install starts
+      // working again after the update, with no manual host edit.
+      for (const host of parsed.hosts) {
+        if (typeof host !== 'object' || host === null || host.commandPolicy === undefined) continue
+        const commandPolicy = normalizeCommandPolicy(host.commandPolicy)
+        if (commandPolicy === undefined) delete host.commandPolicy
+        else host.commandPolicy = commandPolicy
       }
       return parsed
     } catch {

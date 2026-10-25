@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { SshEngine } from '../../src/ssh/engine.ts'
 import type { ExecResult, SshHostSummary, TunnelInfo } from '../../src/ssh/protocol.ts'
 import {
@@ -124,6 +124,23 @@ describe('ssh_list', () => {
     const text = render(tool, result)
     expect(text).toContain('web-01')
     expect(text).toContain('10.0.0.1')
+  })
+
+  it('declares every field a stored host can carry (output-schema contract)', () => {
+    // The host registry validates a successful body against this schema and a
+    // violation fails the WHOLE call. A host with a command guard used to
+    // break ssh_list because `SshHostSummary.commandPolicy` had no counterpart
+    // here; an empty policy (`{ deny: [] }`) must stay legal too, since older
+    // builds persisted one for every host edited in the GUI.
+    const tool = sshListTool(engine(new StubEngine()))
+    const summaries: SshHostSummary[] = [
+      host,
+      { ...host, commandPolicy: { deny: ['python'], denyCommands: ['Rscript'], allowCommands: ['sbatch'], hint: 'use srun' } },
+      { ...host, commandPolicy: { deny: [] } },
+    ]
+    for (const summary of summaries) {
+      expect(validateJsonSchemaValue(tool.output.schema, { ok: true, hosts: [summary] }, 'value')).toEqual([])
+    }
   })
 })
 

@@ -190,6 +190,38 @@ export function HostFormDialog({ api, editing, onClose, onSaved }: HostFormDialo
       : form.authKind === 'password'
         ? { kind: 'password', password: form.password }
         : { kind: 'key', keyPath: form.keyPath.trim(), passphrase: form.passphrase === '' ? undefined : form.passphrase }
+    // Command guard: the form is the truth. `deny` lines are regexes,
+    // `denyCommands`/`allowCommands` are basenames (unwrapped before match).
+    // Saving an all-empty form while the host HAS a guard must still send the
+    // explicit empty policy — that is what clears it (`update` replaces the
+    // field when present). For a host without a guard, sending `{ deny: [] }`
+    // only created a no-op object that `ssh_list`'s output schema rejects, so
+    // the field is omitted entirely.
+    const deny = form.commandPolicy
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line !== '')
+    const denyCommands = form.denyCommands
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line !== '')
+    const allowCommands = form.allowCommands
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line !== '')
+    const hint = form.policyHint.trim()
+    const emptyPolicy = deny.length === 0 && denyCommands.length === 0 && allowCommands.length === 0 && hint === ''
+    const policyPatch: Pick<HostPayload, 'commandPolicy'> =
+      emptyPolicy && (editing == null || editing.commandPolicy === undefined)
+        ? {}
+        : {
+            commandPolicy: {
+              deny,
+              ...(denyCommands.length > 0 ? { denyCommands } : {}),
+              ...(allowCommands.length > 0 ? { allowCommands } : {}),
+              ...(hint === '' ? {} : { hint }),
+            },
+          }
     const payload: HostPayload = {
       host,
       port,
@@ -200,29 +232,7 @@ export function HostFormDialog({ api, editing, onClose, onSaved }: HostFormDialo
       environment: form.environment.trim() === '' ? undefined : form.environment.trim(),
       tags: splitList(form.tags),
       location: form.location.trim() === '' ? undefined : form.location.trim(),
-      // Command guard: the form is the truth. `deny` lines are regexes,
-      // `denyCommands`/`allowCommands` are basenames (unwrapped before match);
-      // a fully-empty form saves an empty policy, which clears any previous
-      // guard (store.update overwrites the field when present).
-      commandPolicy: {
-        deny: form.commandPolicy
-          .split('\n')
-          .map(line => line.trim())
-          .filter(line => line !== ''),
-        ...(form.denyCommands.trim() === '' ? {} : {
-          denyCommands: form.denyCommands
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line !== ''),
-        }),
-        ...(form.allowCommands.trim() === '' ? {} : {
-          allowCommands: form.allowCommands
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line !== ''),
-        }),
-        ...(form.policyHint.trim() === '' ? {} : { hint: form.policyHint.trim() }),
-      },
+      ...policyPatch,
     }
     setSaving(true)
     setError(null)

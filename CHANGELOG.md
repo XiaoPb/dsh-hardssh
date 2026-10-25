@@ -2,6 +2,34 @@
 
 > 自 v0.1.2 起开始记录；更早的迭代版本见 Git 提交历史。
 
+## v0.2.13 — 2026-10-25
+
+### 修复：安卓端 `ssh_list` 因空 `commandPolicy` 整体不可用
+
+- **现象**：安卓端调用 `ssh_list` 直接失败，模型看到的是
+  `tool "ssh_list" returned invalid output: "value.hosts[0].commandPolicy" is not a declared property (additionalProperties: false)`。
+  桌面上同一份代码只要主机没配过命令守卫就完全正常，因此很难按「工具坏了吗」复现。
+- **根因**：主机表单遵循「form is truth」——即使命令守卫字段全为空，也会提交
+  `commandPolicy: { deny: [] }`（本意是「清空既有守卫」）。`HostStore` 原样落盘，
+  `summarize()` 又把它展开进 `SshHostSummary`；而 `ssh_list` 的输出 schema 没声明这个字段，
+  根对象还是 `additionalProperties: false`。宿主对**成功结果**做严格校验，一条违规即抛
+  `ToolOutputError`，于是整个工具失败。凡是经 GUI 新建/编辑过的主机都会踩中——安卓端的
+  主机基本都由 App 内表单创建，所以必现（桌面端主机若是从 `~/.ssh/config` 导入则不受影响）。
+- **修复（三层 + 表单）**：
+  - **写路径**：新增 `normalizeCommandPolicy()`，把「永远拒绝不了任何命令」的策略统一收敛为
+    「没有策略」。`create` 不再落盘空策略；`update` 收到空策略时删除该字段（保留「清空守卫」
+    语义，但不再存一个惰性对象）；`summarize()` 在出口处再规范化一次。
+  - **读路径（自愈）**：`load()` 读取时清掉已经存在的空策略，所以**已受影响的安卓安装升级后
+    无需手工改任何主机配置**就能恢复；真正的守卫（含手写的非法正则）按原样保留，不会被静默丢弃。
+  - **契约**：`ssh_list` 的输出 schema 补上 `commandPolicy`（`deny` 必填，`denyCommands` /
+    `allowCommands` / `hint` 可选），这样「确实配置了守卫」的主机也不会再让工具失败。
+  - **GUI**：主机本来没有守卫、表单字段又全为空时不再提交空对象；只有需要**清空**既有守卫时
+    才显式发送空策略。
+- **测试**：`normalizeCommandPolicy` 用例（空 `deny`、注释行、仅 hint、仅 `allowCommands`
+  都判定为「无守卫」）；store 的 create / update / load 自愈用例；`ssh_list` 输出 schema 用真实
+  summary（含真守卫与空守卫）校验通过；表单「无守卫主机不提交该字段」。原有「清空守卫」用例
+  改为断言字段被删除而不是存成 `{ deny: [] }`。
+
 ## v0.2.12 — 2026-10-25
 
 > `v0.2.11` 是一次**未发布的失败发布尝试**：Linux CI 在没有默认私钥的环境里认证测试失败，
