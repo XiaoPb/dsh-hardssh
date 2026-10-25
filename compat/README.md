@@ -23,6 +23,7 @@ Rules:
 | `dsh-0.1.5-rc.2.json` | ✅ passes |
 | `dsh-0.1.6-alpha.1.json` | ✅ passes |
 | `dsh-0.1.6-alpha.2.json` | ✅ passes (current 0.1.6 line; components that do not publish `0.1.6-alpha.x` stay on `0.1.5-rc.2` — currently only `dsh-code-runtime`) |
+| `dsh-0.2.1-rc.2.json` | ✅ passes (Android runtime line; same companion-version rules as rc.3) |
 | `dsh-0.2.1-rc.3.json` | ✅ passes (shipped Desktop build; `dsh-client-runtime` stays `0.1.1-rc.2`, `dsh-code-runtime` `0.1.5-rc.3`, `dsh-invariants` `0.2.0-rc.2`, the newest lines those packages publish) |
 | `verified-incompatible-dsh-0.1.5-alpha.1.json` | ❌ `pnpm typecheck` fails |
 
@@ -44,8 +45,8 @@ complexity for a pre-rc line. The supported range starts at `0.1.5-rc.1`.
 
 - The declared peer range
   `>=0.1.5-rc.1 <0.1.7 || >=0.1.6-alpha.1 || >=0.2.1-rc.1`
-  matches every passing set (including the shipped `0.2.1-rc.3`) plus stable
-  `0.1.6`/`0.2.x`, and excludes `0.1.5-alpha.*`. The extra arms are required
+  matches every passing set (including `0.2.1-rc.2` and the shipped
+  `0.2.1-rc.3`) plus stable `0.1.6`/`0.2.x`, and excludes `0.1.5-alpha.*`. The extra arms are required
   because semver only matches a prerelease candidate when some comparator shares
   its major.minor.patch tuple and carries a prerelease — a bare
   `>=0.1.5-rc.1 <0.1.7` silently excludes `0.1.6-alpha.x`, and without
@@ -57,9 +58,9 @@ change: run the matrix locally before widening anything.
 ### The `0.2.1` line (shipped Desktop)
 
 `dsh-0.2.1-rc.3.json` is the component line shipped by the current Desktop build
-(`runtime/primary-runtime/runtime.json` → `desktopVersion: 0.2.1-rc.3`). It passes
-`pnpm typecheck`, the default suite, the complete suite, the build and
-`npm pack --dry-run`.
+(`runtime/primary-runtime/runtime.json` → `desktopVersion: 0.2.1-rc.3`);
+`dsh-0.2.1-rc.2.json` covers the Android runtime line. Both pass `pnpm typecheck`,
+the default suite, the complete suite, the build and `npm pack --dry-run`.
 
 Two API changes were needed for it:
 

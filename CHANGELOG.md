@@ -40,10 +40,11 @@
 
 ### DSH 0.2.1+ 兼容
 
-- **兼容集与矩阵**：新增 `compat/dsh-0.2.1-rc.3.json`（当前桌面版 `runtime.json` 的
-  `desktopVersion`），并加入 CI 矩阵；该线在 Node 22.19 / 24 上通过 `typecheck`、默认套件、
-  完整套件、`build` 与 `npm pack --dry-run`。`dsh-client-runtime` 保持 `0.1.1-rc.2`、
-  `dsh-code-runtime` 用 `0.1.5-rc.3`、`dsh-invariants` 用 `0.2.0-rc.2`（各自最新可发布线）。
+- **兼容集与矩阵**：新增 `compat/dsh-0.2.1-rc.2.json`（Android runtime 线）与
+  `compat/dsh-0.2.1-rc.3.json`（当前桌面版 `runtime.json` 的 `desktopVersion`），并加入
+  CI 矩阵；两条线在 Node 22.19 / 24 上通过 `typecheck`、默认套件、完整套件、`build` 与
+  `npm pack --dry-run`。`dsh-client-runtime` 保持 `0.1.1-rc.2`、`dsh-code-runtime` 用
+  `0.1.5-rc.3`、`dsh-invariants` 用 `0.2.0-rc.2`（各自最新可发布线）。
 - **peer 范围补 0.2.1 预发布臂**：semver 的预发布匹配规则会让
   `>=0.1.5-rc.1 <0.1.7 || >=0.1.6-alpha.1` **排除 `0.2.1-rc.3`**。范围扩为
   `... || >=0.2.1-rc.1`，既保留 0.2.0 稳定版（经 0.1.6 臂），也显式纳入

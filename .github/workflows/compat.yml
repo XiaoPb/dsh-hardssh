@@ -24,10 +24,10 @@ jobs:
         # stays as compat/verified-incompatible-*.json rather than a matrix leg.
         # The 0.1.6-alpha sets pin every component to that line except
         # dsh-code-runtime (which does not publish a 0.1.6 line) — see
-        # compat/dsh-0.1.6-*.json. dsh-0.2.1-rc.3 is the shipped Desktop line;
-        # client-runtime/code-runtime/invariants stay on the newest lines they
-        # publish.
-        dsh: ['dsh-0.1.5-rc.1', 'dsh-0.1.5-rc.2', 'dsh-0.1.6-alpha.1', 'dsh-0.1.6-alpha.2', 'dsh-0.2.1-rc.3']
+        # compat/dsh-0.1.6-*.json. dsh-0.2.1-rc.3 is the shipped Desktop line and
+        # dsh-0.2.1-rc.2 the Android runtime line; client-runtime/code-runtime/
+        # invariants stay on the newest lines they publish.
+        dsh: ['dsh-0.1.5-rc.1', 'dsh-0.1.5-rc.2', 'dsh-0.1.6-alpha.1', 'dsh-0.1.6-alpha.2', 'dsh-0.2.1-rc.2', 'dsh-0.2.1-rc.3']
 
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +52,7 @@ jobs:
         run: pnpm test
 
       - name: Test complete suite once
-        if: matrix.node == '24' && (matrix.dsh == 'dsh-0.1.5-rc.1' || matrix.dsh == 'dsh-0.2.1-rc.3')
+        if: matrix.node == '24' && (matrix.dsh == 'dsh-0.1.5-rc.1' || startsWith(matrix.dsh, 'dsh-0.2.1-'))
         run: pnpm test:all
 
       - name: Build

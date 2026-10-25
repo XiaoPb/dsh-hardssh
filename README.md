@@ -159,10 +159,10 @@ NPM 包页面：https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
 | 插件版本 | 已验证 DSH | Node | 远端主机 |
 |---|---|---|---|
-| `0.2.11`（当前，fork） | **`0.2.1-rc.3`（桌面版 Electron，CI 矩阵与完整套件实测）+ `0.2.1-rc.2`（Android runtime）** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1`（0.1.x 矩阵四条线全绿 + 0.2.1-rc.3 线：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.2.1-rc.3`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
+| `0.2.11`（当前，fork） | **`0.2.1-rc.3`（桌面版 Electron，CI 矩阵与完整套件实测）+ `0.2.1-rc.2`（Android runtime）** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1`（0.1.x 矩阵四条线全绿 + 0.2.1 线：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.2.1-rc.2` / `0.2.1-rc.3`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
 | `0.2.5` ~ `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（旧四条线；不含 0.2.1 显式预发布臂） | 同上 | 同上 |
 
-> 0.2.1 线的说明：当前桌面版运行时为 **`0.2.1-rc.3`**，已加入 `compat/dsh-0.2.1-rc.3.json` 与 CI 矩阵；`settings/document-updated`、右侧栏 guide `id`、`SubprocessHandle.control` 均已按 0.2.x 适配，0.1.x 行为保持。0.2.0-rc.2 是历史桌面线，其宿主侧与客户端会话跟随曾实测通过；当前声明范围从 0.2.1-rc.1 起（0.2.1-rc.3 是其后继线，已加入矩阵）。
+> 0.2.1 线的说明：当前桌面版运行时为 **`0.2.1-rc.3`**，已加入 `compat/dsh-0.2.1-rc.3.json` 与 CI 矩阵；`settings/document-updated`、右侧栏 guide `id`、`SubprocessHandle.control` 均已按 0.2.x 适配，0.1.x 行为保持。0.2.0-rc.2 是历史桌面线，其宿主侧与客户端会话跟随曾实测通过；当前声明范围从 0.2.1-rc.1 起（0.2.1-rc.2 是 Android runtime 线、0.2.1-rc.3 是桌面版线，均已加入矩阵）。
 
 > 更早的 `0.1.5-alpha.1` **不支持**：`dsh-client-ui-slots@0.1.5-alpha.1` 没有 `main` 槽位，工作区面板无处挂载（矩阵实测 typecheck 直接失败）。见 `compat/README.md`。
 

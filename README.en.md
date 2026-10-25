@@ -241,10 +241,10 @@ npm package page: https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
 | Plugin | Verified DSH | Node | Remote hosts |
 |---|---|---|---|
-| `0.2.11` (current, fork) | **`0.2.1-rc.3` (Desktop/Electron, CI matrix + complete suite) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1` (four 0.1.x matrix lines plus the 0.2.1-rc.3 line: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`, `0.2.1-rc.3`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
+| `0.2.11` (current, fork) | **`0.2.1-rc.3` (Desktop/Electron, CI matrix + complete suite) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1 \|\| >=0.2.1-rc.1` (four 0.1.x matrix lines plus the 0.2.1 line: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`, `0.2.1-rc.2`, `0.2.1-rc.3`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
 | `0.2.5` – `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (the old four lines; no explicit 0.2.1 prerelease arm) | same | same |
 
-> About the 0.2.1 line: the current Desktop runtime is **`0.2.1-rc.3`**, covered by `compat/dsh-0.2.1-rc.3.json` and the CI matrix. `settings/document-updated`, the sidebar-right guide `id`, and `SubprocessHandle.control` are adapted for 0.2.x while 0.1.x behaviour stays intact. 0.2.0-rc.2 is the historical Desktop line whose host half and client session-follow were verified; the declared range starts at 0.2.1-rc.1, with 0.2.1-rc.3 as its successor in the matrix.
+> About the 0.2.1 line: the current Desktop runtime is **`0.2.1-rc.3`**, covered by `compat/dsh-0.2.1-rc.3.json` and the CI matrix. `settings/document-updated`, the sidebar-right guide `id`, and `SubprocessHandle.control` are adapted for 0.2.x while 0.1.x behaviour stays intact. 0.2.0-rc.2 is the historical Desktop line whose host half and client session-follow were verified; the declared range starts at 0.2.1-rc.1; both 0.2.1-rc.2 (Android runtime) and 0.2.1-rc.3 (Desktop) are in the matrix.
 
 > The earlier `0.1.5-alpha.1` is **not** supported: `dsh-client-ui-slots@0.1.5-alpha.1` declares no `main` slot, so the workspace panel has nowhere to mount (the matrix fails typecheck). See `compat/README.md`.
 
