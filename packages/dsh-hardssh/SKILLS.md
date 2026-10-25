@@ -1,7 +1,7 @@
 # SKILLS — 把任意 DSH 插件适配到 SSH 工作区
 
 > 写给 agent 的执行手册。目标：用**最少的接口替换**，让一个插件在 SSH 工作区及其 session 下正常工作。
-> 底座包：`@tiphareth/dsh-hardssh`（本包）。参考实现：`src/client/session-connect-gate.ts`、`src/client/ssh/session-target.ts`、`src/providers/ssh/provider.ts`。
+> 底座包：`@xiaopb/dsh-hardssh`（本包）。参考实现：`src/client/session-connect-gate.ts`、`src/client/ssh/session-target.ts`、`src/providers/ssh/provider.ts`。
 
 ## 0. 先判断属于哪一类（决定要不要改）
 
@@ -57,7 +57,7 @@ const outcome = await handle.done
 |---|---|---|
 | 自己维护 path→远端映射 | `ctx.workspaceCore.findByAnchor(path)` / `openByAnchor(path)` | 底座公开面 |
 | 需要「这个 cwd 属于哪个工作区」的连接 | `ctx.workspaceCore.openByAnchor(cwd)` → `WorkspaceConnection` | 同上 |
-| 自己的 workspace 句柄类型 | `WorkspaceCore` / `WorkspaceConnection` / `WorkspaceRecord` | `@tiphareth/dsh-hardssh/workspace` |
+| 自己的 workspace 句柄类型 | `WorkspaceCore` / `WorkspaceConnection` / `WorkspaceRecord` | `@xiaopb/dsh-hardssh/workspace` |
 | 自己实现的文件/进程能力契约 | `connection.get('workspace.fs' \| 'workspace.process' \| 'workspace.search')` | 同上 |
 
 ```ts

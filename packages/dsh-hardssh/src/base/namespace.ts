@@ -15,7 +15,7 @@
  * The legacy SSH format (`ssh:<recordId>:`) is still accepted (decode only)
  * so existing persisted targets keep resolving during the migration window.
  *
- * @module @tiphareth/dsh-hardssh/base/namespace
+ * @module @xiaopb/dsh-hardssh/base/namespace
  */
 
 /** The URI scheme used for explicit workspace-namespaced target keys. */

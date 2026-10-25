@@ -13,7 +13,7 @@
  * entries) are contributed through the runtime bridge, never through this
  * core contract, so `base` stays free of Cordis/React.
  *
- * @module @tiphareth/dsh-hardssh/base/plugin
+ * @module @xiaopb/dsh-hardssh/base/plugin
  */
 
 import type { WorkspaceProvider, WorkspaceRecord } from './model.ts'

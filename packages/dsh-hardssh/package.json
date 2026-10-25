@@ -1,16 +1,27 @@
 {
-  "name": "@tiphareth/dsh-hardssh",
+  "name": "@xiaopb/dsh-hardssh",
   "description": "Generic workspace base for the dsh harness (local + remote workspace providers with per-workspace routing), with SSH as one concrete provider: bind a server directory as an SSH workspace so the session's file I/O and commands run on that host, manage hosts and workspaces in the GUI, and operate remote servers through the ssh_* / remote_* agent tools",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "type": "module",
+  "author": "XiaoPb",
+  "contributors": [
+    {
+      "name": "tiphareth0",
+      "url": "https://github.com/tiphareth0"
+    }
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tiphareth0/dsh-hardssh.git",
+    "url": "git+https://github.com/XiaoPb/dsh-hardssh.git",
     "directory": "packages/dsh-hardssh"
   },
-  "homepage": "https://github.com/tiphareth0/dsh-hardssh",
+  "homepage": "https://github.com/XiaoPb/dsh-hardssh",
   "bugs": {
-    "url": "https://github.com/tiphareth0/dsh-hardssh/issues"
+    "url": "https://github.com/XiaoPb/dsh-hardssh/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "keywords": [
     "dsh",
@@ -82,7 +93,8 @@
     "test:all": "vitest run",
     "test:vault": "vitest run tests/ssh/vault.test.ts",
     "workspace:export-legacy": "node ./scripts/export-legacy-workspaces.mjs",
-    "prepare": "tsdown"
+    "prepare": "tsdown",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
@@ -169,7 +181,9 @@
     "scripts/export-legacy-workspaces.mjs",
     "cordis.patch.yml",
     "README.md",
-    "SKILLS.md"
+    "SKILLS.md",
+    "LICENSE",
+    "NOTICE"
   ],
   "license": "BSD-3-Clause"
 }

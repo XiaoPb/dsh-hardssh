@@ -1,0 +1,29 @@
+dsh-hardssh
+===========
+
+Copyright (c) 2026, tiphareth0 (original project)
+Copyright (c) 2026, XiaoPb (modifications in this fork)
+All rights reserved.
+
+This distribution is a modified fork of the original `dsh-hardssh` project:
+
+  Original: https://github.com/tiphareth0/dsh-hardssh
+  Fork:     https://github.com/XiaoPb/dsh-hardssh
+
+The original project is licensed under the BSD 3-Clause License. The full
+license text is retained in the LICENSE file next to this NOTICE file; it
+applies to this fork as well.
+
+Modifications in this fork include, but are not limited to:
+
+  * the npm package name changed to `@xiaopb/dsh-hardssh` to avoid a conflict
+    with the original package;
+  * repository, issue tracker and release automation maintained by XiaoPb;
+  * an independent GitHub Actions pipeline that builds, verifies, packs and
+    publishes release artifacts (npm + GitHub Releases);
+  * the SSH workspace directory picker can create a new folder on the remote
+    host while browsing, in addition to the existing local-folder creation.
+
+The original copyright notice, this NOTICE file and the LICENSE file must be
+retained in source and binary redistributions as required by the BSD 3-Clause
+License.

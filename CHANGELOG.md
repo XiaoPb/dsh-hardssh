@@ -2,6 +2,38 @@
 
 > 自 v0.1.2 起开始记录；更早的迭代版本见 Git 提交历史。
 
+## v0.2.11 — 2026-10-25
+
+### Fork 独立发布：`@xiaopb/dsh-hardssh`
+
+- **包名迁移**：npm 包名由 `@tiphareth/dsh-hardssh` 改为 `@xiaopb/dsh-hardssh`
+  （npm 新包名只接受小写；GitHub 账号 `XiaoPb` 对应 npm scope `@xiaopb`），
+  仓库/主页/issue 链接改为 `github.com/XiaoPb/dsh-hardssh`；`cordis.patch.yml`
+  的插件名、tsdown bundle 名、右侧栏 operations tab id、README/SKILLS/SECURITY
+  文档与 CI 过滤器同步更新。
+- **声明文件**：保留原 BSD-3-Clause `LICENSE`（根目录与包内各一份），新增根目录与包内
+  `NOTICE`，写明原始项目、修改内容与再分发要求；`NOTICE` 与 `LICENSE` 均加入 npm
+  `files` 清单，发布 tarball 会携带。
+- **CI/CD**：新增 `.github/workflows/release.yml`。推送 `v*` tag 触发完整流水线：
+  tag/版本/包名校验 → `typecheck` → `test` → `build` → `npm pack` → 产物内容校验 →
+  npm 发布（`--access public --provenance`，预发布版本自动用 `next` dist-tag）→
+  生成带版本信息、提交统计、SHA-256、分类变更、贡献者与对比链接的 GitHub Release。
+  支持 `workflow_dispatch` 手动验证/打包，勾选 `publish` 可按当前版本补发 npm。
+- **文档**：README/README.en 增加 fork 说明、npm/GitHub Releases 安装方式与「发布」
+  一节（npm scope、`NPM_TOKEN`、`dsh-plugin` topic、provenance 与发布步骤）。
+
+### SSH 工作区：远端目录浏览窗口支持新建文件夹
+
+- **远端 mkdir 路由**：`POST /api/dsh-hardssh/ws/dir` 接收 `{ alias, path, name }`，
+  仅限 loopback；`path` 必须是绝对 POSIX 路径，`name` 只允许单段目录名（拒绝
+  `/`、`\`、NUL、`.`、`..`）；先列父目录做重名检查（409 `EEXIST`），再走 SFTP
+  `mkdir`，失败按统一路由错误返回。
+- **浏览窗口**：SSH 分支的目录浏览底栏新增「新建文件夹」，就地输入名称创建；成功后
+  重新列目录并高亮新行，失败保留输入并在弹窗内显示服务端原因；连接池已回收、
+  创建时触发 `NEEDS_PASSWORD` / 主机密钥交互时，先走连接闸门再自动重试。
+- **测试**：新增远端 mkdir 路由用例（创建/重名/非法名/相对路径/未知主机/方法/回环）
+  与 5 个客户端用例（创建+刷新、非法名拦截、失败保留、交互式重连重试、缺能力置灰）。
+
 ## v0.2.10 — 2026-10-25
 
 ### Android：本地目录浏览器重绘 + 新建文件夹

@@ -1,9 +1,11 @@
 # dsh-hardssh — SSH 远程工作区 + SSH 运维插件
 
-已适配 DSH **0.1.5 ~ 0.2.1，含官方桌面版（Electron）与 Android 端**（0.1.x 兼容矩阵四条线全绿：`0.1.5-rc.1`、`0.1.5-rc.2`、`0.1.6-alpha.1`、`0.1.6-alpha.2`；0.2.0/0.2.1 线已在桌面版与 Android runtime 上实测宿主侧、工作区注册、browse 目录选择（含 UI 重绘与新建文件夹）与私钥导入/生成；peer 范围 `>=0.1.5-rc.1 <0.1.7 || >=0.1.6-alpha.1`，对 0.2.x 不设上限；本包版本 `0.2.10`）。客户端 Windows / Linux / macOS / Android 均可用（CI 在 Linux runner 上跑 Node 22.19 与 24 的完整套件；客户端路径、锚点与远端根之间的映射有专门的跨平台回归用例）。在 DSH Web GUI 中提供两块能力（单包单引擎）：
+已适配 DSH **0.1.5 ~ 0.2.1，含官方桌面版（Electron）与 Android 端**（0.1.x 兼容矩阵四条线全绿：`0.1.5-rc.1`、`0.1.5-rc.2`、`0.1.6-alpha.1`、`0.1.6-alpha.2`；0.2.0/0.2.1 线已在桌面版与 Android runtime 上实测宿主侧、工作区注册、browse 目录选择（含 UI 重绘与新建文件夹）与私钥导入/生成；peer 范围 `>=0.1.5-rc.1 <0.1.7 || >=0.1.6-alpha.1`，对 0.2.x 不设上限；本包版本 `0.2.11`）。客户端 Windows / Linux / macOS / Android 均可用（CI 在 Linux runner 上跑 Node 22.19 与 24 的完整套件；客户端路径、锚点与远端根之间的映射有专门的跨平台回归用例）。在 DSH Web GUI 中提供两块能力（单包单引擎）：
 
 1. **SSH 运维**：右侧栏「SSH」Tab（从右侧栏标签条的「+」或右侧栏引导页入口打开）→ Web 终端（xterm + WebSocket PTY）、文件上传下载、本地端口转发隧道、当前服务器的远端命令；`ssh_list` / `ssh_exec` / `ssh_upload` / `ssh_download` / `ssh_tunnel` / `ssh_cluster` 六个 Agent 工具；主机配置存 `~/.dsh/dsh-ssh.json`。
-2. **SSH 工作区**：左侧侧栏的全局入口行 → 中央面板管理服务器与工作区（增删改查 / `~/.ssh/config` 导入）；绑定后本地 harness 的 fs/subprocess 经接缝门面透明路由到远程主机执行（read/write/edit/bash 在绑定会话中即远程操作）；`remote_*` 三个 Agent 工具（`remote_ls` / `remote_search` / `remote_status`）用于显式操作远端工作区。
+2. **SSH 工作区**：左侧侧栏的全局入口行 → 中央面板管理服务器与工作区（增删改查 / `~/.ssh/config` 导入）；绑定后本地 harness 的 fs/subprocess 经接缝门面透明路由到远程主机执行（read/write/edit/bash 在绑定会话中即远程操作）；`remote_*` 三个 Agent 工具（`remote_ls` / `remote_search` / `remote_status`）用于显式操作远端工作区。新建 SSH 工作区时，远端目录浏览窗口可直接「新建文件夹」（服务端 mkdir，自动刷新并高亮新目录）。
+
+> **Fork 说明**：本仓库是 [tiphareth0/dsh-hardssh](https://github.com/tiphareth0/dsh-hardssh) 的修改版，按 BSD-3-Clause 许可独立发布为 `@xiaopb/dsh-hardssh`。原始版权与修改声明见 [LICENSE](./LICENSE) 与 [NOTICE](./NOTICE)。npm 包名只能使用小写，因此 GitHub 账号 `XiaoPb` 对应的 npm scope 写作 `@xiaopb`。
 
 ## 核心优势
 
@@ -17,7 +19,7 @@
 - **接缝切换**：`cordis.patch.yml` 禁用部署自带的 `fs-sandbox` / `subprocess` 行，由 `dsh-hardssh/fs`、`dsh-hardssh/subprocess` 提供 provider 路由门面（本地 = 沙箱化原实现；远端 = 该 workspace 连接上的 `workspace.fs` / `workspace.process` capability）。
 - **REST**：`/api/dsh-ssh`（运维路由，loopback-only）+ `/api/dsh-hardssh`（工作区路由，loopback-only）。
 - **工作区核心服务**：`ctx.workspaceCore`（通用 WorkspaceCore：台账 + provider 路由 + capability 连接）是**唯一**的工作区运行时；`ctx.hardsshCore` 只保留 `hosts` + `engine` 供 SSH 专用集成消费（如四列 IDE 形态的 `dsh-workbench-tiphareth`）。
-- **公开入口**：`@tiphareth/dsh-hardssh/base`（通用底座实现）、`@tiphareth/dsh-hardssh/workspace`（平台无关类型面）。
+- **公开入口**：`@xiaopb/dsh-hardssh/base`（通用底座实现）、`@xiaopb/dsh-hardssh/workspace`（平台无关类型面）。
 
 ## 界面入口（全部走标准插件扩展点）
 
@@ -82,13 +84,20 @@
 ## 安装
 
 ```sh
-# npm 现状：最新是预发布 0.2.6-alpha，稳定版仍是 0.2.5（均不含 0.2.0/桌面版适配）
-dsh plugin --profile web add @tiphareth/dsh-hardssh@0.2.6-alpha
-dsh plugin --profile web add @tiphareth/dsh-hardssh
+# npm（本 fork 独立发布，包名小写）
+dsh plugin --profile web add @xiaopb/dsh-hardssh
+dsh plugin --profile web add @xiaopb/dsh-hardssh@0.2.11   # 固定版本
 
-# 本包当前版本 0.2.7（含 dsh 0.2.0 与桌面版支持，尚未发布 npm）：用源码/打包安装
+# 源码链接（改码后重建 lib/ 并重启 dsh 即生效）
 dsh plugin --profile web add link:<repo>/packages/dsh-hardssh
+
+# 或先打包，再安装 tarball
+pnpm --filter @xiaopb/dsh-hardssh pack --pack-destination dist
+dsh plugin --profile web add <repo>/dist/xiaopb-dsh-hardssh-0.2.11.tgz
 ```
+
+发布流程见仓库 [README.md](https://github.com/XiaoPb/dsh-hardssh#发布release) 的「发布（Release）」一节：
+推送 `v0.2.11` 这类语义化 tag 会触发 CI 完成测试、构建、npm 发布与 GitHub Release。
 
 **桌面版（Electron）dsh**：可以正常加载本插件，但它的 `desktop` profile 由应用独占管理——
 普通 CLI 执行 `dsh plugin --profile desktop …` 会被拒绝
@@ -103,10 +112,10 @@ dsh plugin --profile web add link:<repo>/packages/dsh-hardssh
 在仓库根目录执行：
 
 ```sh
-pnpm --filter dsh-hardssh typecheck   # 类型检查
-pnpm test                             # 默认测试套件（vault 加密用例已移出，约 12s）
-pnpm test:vault                       # 只跑 vault 用例（约 21s，scrypt 派生故意慢）
-pnpm --filter dsh-hardssh build       # 产出 lib/（构建前先清空，避免陈旧产物）
+pnpm --filter @xiaopb/dsh-hardssh typecheck   # 类型检查
+pnpm test                                     # 默认测试套件（vault 加密用例已移出，约 12s）
+pnpm test:vault                               # 只跑 vault 用例（约 21s，scrypt 派生故意慢）
+pnpm --filter @xiaopb/dsh-hardssh build       # 产出 lib/（构建前先清空，避免陈旧产物）
 ```
 
 > profile 通过 `link:` 指向本包源码目录，因此改码后只需重新 `build`（产出 `lib/`）并重启
@@ -122,4 +131,4 @@ pnpm --filter dsh-hardssh build       # 产出 lib/（构建前先清空，避�
 - SSH 模式下本机沙箱不对远程执行生效（远程进程无法被本地内核沙箱约束）：门面的 `sandboxMode` 委托本地后端的真实模式（`write` / `edit` 的沙箱升级入口据此注册），而远端世界的升级策略在门面处**显式丢弃**。
 - 凭据默认不落盘；`secretStorage: vault` 时以 AES-256-GCM + scrypt 加密存储于 `~/.dsh/ssh-secrets/dsh-ssh-vault.json`（被 fs seam 拒绝访问），且 `DSH_CREDENTIAL_PASSWORD` 自动解锁默认关闭（需 `vaultAutoUnlock: env`）。会话密码按**连接存活期**复用，连接池回收即失效。
 
-完整的信任边界、能力清单，以及静态扫描命中项（`exec` 方法名、`child_process`、私钥路径字面量等）的逐条说明见仓库根目录的 [SECURITY.md](https://github.com/tiphareth0/dsh-hardssh/blob/master/SECURITY.md)。
+完整的信任边界、能力清单，以及静态扫描命中项（`exec` 方法名、`child_process`、私钥路径字面量等）的逐条说明见仓库根目录的 [SECURITY.md](https://github.com/XiaoPb/dsh-hardssh/blob/master/SECURITY.md)。

@@ -1,0 +1,378 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Release
+
+# Tag pushes publish; branch pushes and PRs only verify. Manual runs verify and
+# pack by default, and publish the current package.json version when requested.
+on:
+  push:
+    branches: [master, main]
+    # Any v* tag triggers verification; the version-check step below rejects a
+    # non-semver tag before anything is built or published.
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the current package.json version to npm (no tag/release is created)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24'
+  PNPM_VERSION: '11.24.0'
+  PACKAGE_NAME: '@xiaopb/dsh-hardssh'
+  PACKAGE_DIR: packages/dsh-hardssh
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # Verify, test, build and pack once. Every publish path consumes this exact
+  # tarball so the npm artifact and the GitHub asset are byte-identical.
+  verify:
+    name: Verify and pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tarball: ${{ steps.pack.outputs.tarball }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify package metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="$(node -p "require('./${PACKAGE_DIR}/package.json').name")"
+          VERSION="$(node -p "require('./${PACKAGE_DIR}/package.json').version")"
+          ROOT_VERSION="$(node -p "require('./package.json').version")"
+          if [ "${NAME}" != "${PACKAGE_NAME}" ]; then
+            echo "::error::package name is '${NAME}', expected '${PACKAGE_NAME}'"
+            exit 1
+          fi
+          if [ "${VERSION}" != "${ROOT_VERSION}" ]; then
+            echo "::error::root package.json version (${ROOT_VERSION}) != package version (${VERSION})"
+            exit 1
+          fi
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'${VERSION}' is not a semantic version"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Packing ${NAME}@${VERSION}"
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          if [ "${TAG_VERSION}" != "${VERSION}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} != package version ${VERSION}"
+            exit 1
+          fi
+          echo "tag ${GITHUB_REF_NAME} matches package version ${VERSION}"
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test complete suite
+        run: pnpm test:all
+
+      - name: Build
+        run: pnpm --filter "$PACKAGE_NAME" build
+
+      - name: Pack npm tarball
+        id: pack
+        shell: bash
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          npm pack --ignore-scripts --pack-destination "$GITHUB_WORKSPACE/artifacts"
+          TARBALL="$(ls "$GITHUB_WORKSPACE"/artifacts/*.tgz)"
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+          ls -l "$TARBALL"
+
+      - name: Verify publish shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARBALL="${{ steps.pack.outputs.tarball }}"
+          for path in \
+            package/package.json \
+            package/LICENSE \
+            package/NOTICE \
+            package/README.md \
+            package/SKILLS.md \
+            package/cordis.patch.yml \
+            package/lib/index.js \
+            package/lib/client.js \
+            package/lib/types/index.d.ts; do
+            if ! tar -tzf "${TARBALL}" | grep -qx "${path}"; then
+              echo "::error::${path} is missing from the npm tarball"
+              exit 1
+            fi
+          done
+          EXPECTED_NAME="${PACKAGE_NAME}" EXPECTED_VERSION="${{ steps.meta.outputs.version }}" \
+            node -e '
+              const fs = require("fs");
+              const { execFileSync } = require("child_process");
+              const text = execFileSync("tar", ["-xOf", process.argv[1], "package/package.json"], { encoding: "utf8" });
+              const manifest = JSON.parse(text);
+              if (manifest.name !== process.env.EXPECTED_NAME) {
+                throw new Error(`tarball name ${manifest.name} != ${process.env.EXPECTED_NAME}`);
+              }
+              if (manifest.version !== process.env.EXPECTED_VERSION) {
+                throw new Error(`tarball version ${manifest.version} != ${process.env.EXPECTED_VERSION}`);
+              }
+              if (manifest.license !== "BSD-3-Clause") {
+                throw new Error(`unexpected license ${manifest.license}`);
+              }
+              console.log(`tarball manifest OK: ${manifest.name}@${manifest.version} (${manifest.license})`);
+            ' "${TARBALL}"
+
+      - name: Summarize verification
+        shell: bash
+        run: |
+          {
+            echo "## Release verification"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Package | \`${PACKAGE_NAME}\` |"
+            echo "| Version | \`${{ steps.meta.outputs.version }}\` |"
+            echo "| Ref | \`${GITHUB_REF_NAME}\` |"
+            echo "| Commit | \`${GITHUB_SHA::7}\` |"
+            echo "| Tarball | \`$(basename "${{ steps.pack.outputs.tarball }}")\` |"
+            echo "| SHA-256 | \`$(sha256sum "${{ steps.pack.outputs.tarball }}" | cut -d' ' -f1)\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload npm tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: artifacts/*.tgz
+          retention-days: 7
+
+  # Publish to npm only from a tag, or from a manual run with `publish`.
+  publish-npm:
+    name: Publish to npm
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # npm provenance (OIDC)
+    steps:
+      - name: Download npm tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Check npm token
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::The NPM_TOKEN repository secret is missing. Create an npm automation/granular token with publish rights for @xiaopb and add it as NPM_TOKEN."
+            exit 1
+          fi
+
+      - name: Publish
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          TARBALL="$(ls artifacts/*.tgz)"
+          if [[ "${VERSION}" == *-* ]]; then
+            DIST_TAG=next
+          else
+            DIST_TAG=latest
+          fi
+          echo "Publishing $(basename "${TARBALL}") as ${PACKAGE_NAME}@${VERSION} (dist-tag ${DIST_TAG})"
+          npm publish "${TARBALL}" --access public --provenance --tag "${DIST_TAG}"
+          {
+            echo "## npm publish"
+            echo ""
+            echo "- Package: [\`${PACKAGE_NAME}@${VERSION}\`](https://www.npmjs.com/package/${PACKAGE_NAME}/v/${VERSION})"
+            echo "- dist-tag: \`${DIST_TAG}\`"
+            echo "- Tarball: \`$(basename "${TARBALL}")\`"
+            echo "- Provenance: enabled (\`--provenance\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Tag-only GitHub Release with complete metadata and the same tarball.
+  release:
+    name: Create GitHub Release
+    needs: [verify, publish-npm]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release and upload assets
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download npm tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: artifacts
+
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          PREV_TAG="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          if [ -n "${PREV_TAG}" ]; then
+            RANGE="${PREV_TAG}..${TAG}"
+            COMPARE="https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${TAG}"
+          else
+            RANGE="${TAG}"
+            COMPARE="https://github.com/${GITHUB_REPOSITORY}/commits/${TAG}"
+          fi
+
+          mkdir -p .release
+          for key in feat fix perf refactor build ci docs test style other; do
+            : > ".release/${key}.md"
+          done
+          while IFS=$'\t' read -r short subject; do
+            [ -z "${subject}" ] && continue
+            type=$(printf '%s' "${subject}" | sed -nE 's/^([a-z]+)(\([^)]*\))?!?:.*/\1/p')
+            case "${type}" in
+              feat|fix|perf|refactor|build|ci|docs|test|style) ;;
+              *) type=other ;;
+            esac
+            printf -- '- %s (`%s`)\n' "${subject}" "${short}" >> ".release/${type}.md"
+          done < <(git log --no-merges --pretty=format:'%h%x09%s%n' "${RANGE}")
+
+          CONTRIBUTORS="$(git log --no-merges --pretty='%an' "${RANGE}" | sort -u | tr '\n' ',' | sed 's/,/, /g; s/, $//')"
+          COMMIT_COUNT="$(git rev-list --count --no-merges "${RANGE}")"
+
+          TARBALL="$(ls artifacts/*.tgz)"
+          NAME="$(basename "${TARBALL}")"
+          SIZE="$(du -h "${TARBALL}" | cut -f1)"
+          SHA="$(sha256sum "${TARBALL}" | cut -d' ' -f1)"
+          (cd artifacts && sha256sum ./*.tgz > SHA256SUMS)
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## 版本信息"
+            echo ""
+            echo "| 项目 | 值 |"
+            echo "| --- | --- |"
+            echo "| 版本 | \`${TAG}\` |"
+            echo "| npm 包 | [\`${PACKAGE_NAME}@${VERSION}\`](https://www.npmjs.com/package/${PACKAGE_NAME}/v/${VERSION}) |"
+            echo "| 提交 | \`${GITHUB_SHA::7}\` |"
+            echo "| 提交数量 | ${COMMIT_COUNT} |"
+            echo "| 构建时间 | $(date -u '+%Y-%m-%d %H:%M UTC') |"
+            echo "| 构建环境 | GitHub Actions / Ubuntu latest / Node ${NODE_VERSION} / pnpm ${PNPM_VERSION} |"
+            echo "| 支持平台 | Windows / macOS / Linux / Android（客户端）；远端需 POSIX + SFTP |"
+            echo "| dist-tag | \`$([[ "${VERSION}" == *-* ]] && echo next || echo latest)\` |"
+            echo ""
+            echo "## 安装"
+            echo ""
+            echo '```sh'
+            echo "dsh plugin --profile web add ${PACKAGE_NAME}@${VERSION}"
+            echo '```'
+            echo ""
+            echo "## 发布产物"
+            echo ""
+            echo "| 文件 | 大小 | SHA-256 |"
+            echo "| --- | --- | --- |"
+            echo "| \`${NAME}\` | ${SIZE} | \`${SHA}\` |"
+            echo ""
+            echo "npm 发布已启用 provenance（\`--provenance\`），可在 npm 包页面核验构建来源。"
+            echo ""
+            echo "## 变更内容"
+            echo ""
+            for key in feat fix perf refactor build ci docs test style other; do
+              if [ -s ".release/${key}.md" ]; then
+                case "${key}" in
+                  feat) title="新功能" ;;
+                  fix) title="问题修复" ;;
+                  perf) title="性能优化" ;;
+                  refactor) title="重构" ;;
+                  build) title="构建与依赖" ;;
+                  ci) title="CI/CD" ;;
+                  docs) title="文档" ;;
+                  test) title="测试" ;;
+                  style) title="代码风格" ;;
+                  *) title="其他改动" ;;
+                esac
+                echo "### ${title}"
+                echo ""
+                cat ".release/${key}.md"
+                echo ""
+              fi
+            done
+            echo "## 贡献者"
+            echo ""
+            echo "${CONTRIBUTORS:-—}"
+            echo ""
+            echo "## 来源与许可"
+            echo ""
+            echo "- 本仓库是 [tiphareth0/dsh-hardssh](https://github.com/tiphareth0/dsh-hardssh) 的修改版（BSD-3-Clause）。"
+            echo "- 原始版权、修改声明与完整许可见 [LICENSE](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/LICENSE) 与 [NOTICE](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/NOTICE)。"
+            echo "- 完整变更对比：${COMPARE}"
+          } > release-notes.md
+
+          echo "----- release-notes.md -----"
+          cat release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: dsh-hardssh ${{ github.ref_name }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            artifacts/*.tgz
+            artifacts/SHA256SUMS
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

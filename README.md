@@ -1,6 +1,7 @@
 # dsh-hardssh
 
-[![version](https://img.shields.io/badge/version-0.2.7-4D6BFE)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.2.11-4D6BFE)](CHANGELOG.md)
+[![npm](https://img.shields.io/badge/npm-%40xiaopb%2Fdsh--hardssh-CB3837)](https://www.npmjs.com/package/@xiaopb/dsh-hardssh)
 [![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-7a3ef3)](https://github.com/topics/dsh-plugin)
@@ -8,6 +9,11 @@
 **中文** · [English](./README.en.md)
 
 **【DeepSeek Harness (DSH) 的 SSH 工作区 + SSH 运维插件】** · 已适配 DSH **0.1.5 ~ 0.2.1**，**含官方桌面版（Electron）与 Android 端**
+
+> **Fork 说明**：本仓库是 [tiphareth0/dsh-hardssh](https://github.com/tiphareth0/dsh-hardssh) 的修改版，
+> 按 BSD-3-Clause 许可独立发布为 `@xiaopb/dsh-hardssh`。原始版权、修改声明与完整许可见
+> [LICENSE](./LICENSE) 与 [NOTICE](./NOTICE)。npm 包名只能使用小写，因此 GitHub 账号 `XiaoPb`
+> 对应的 npm scope 写作 `@xiaopb`。
 
 把服务器上的任意目录变成 **SSH 工作区**：绑定后，该会话里的文件读写与命令执行**透明地运行在远端主机**，
 你和 agent 都像在操作本机一样工作——同时提供完整的 SSH 运维面板（终端、传输、隧道、命令）。
@@ -64,7 +70,7 @@ WorkspaceRecord / WorkspaceProvider / WorkspaceConnection / 能力(capability)
 |---|---|
 | 直接 `node:fs` / `node:child_process` | `ctx.fs`（DSH FileSystem）/ `ctx.subprocess`（SubprocessRuntime） |
 | 自建的 path→远端映射、「remote 模式」布尔量 | `ctx.workspaceCore.findByAnchor()` / `openByAnchor()` |
-| 自建的 workspace 句柄类型 | `WorkspaceCore` / `WorkspaceConnection` / `WorkspaceRecord`（`@tiphareth/dsh-hardssh/workspace`） |
+| 自建的 workspace 句柄类型 | `WorkspaceCore` / `WorkspaceConnection` / `WorkspaceRecord`（`@xiaopb/dsh-hardssh/workspace`） |
 | 自建的文件/进程能力契约 | `connection.get('workspace.fs' \| 'workspace.process' \| 'workspace.search')` |
 | 客户端自建的 local/remote 全局开关 | `ctx.sessions.list`（`current` + `byId[id].cwd`）+ 工作区快照的最长锚点匹配 |
 
@@ -94,6 +100,7 @@ WorkspaceRecord / WorkspaceProvider / WorkspaceConnection / 能力(capability)
 - **SSH 工作区**：任意 `user@host` 的目录即可成为工作区。绑定的会话透明远端路由；侧边栏工作区带服务器标识（已连接 / 未连接，悬停显示远端目录）。
 - **SSH 运维（跟随会话）**：Web 终端（xterm + WebSocket PTY）、SFTP 上传下载、本地端口转发（访问内网数据库/服务）、当前服务器的远端命令。
 - **主机管理**：左侧「SSH 工作区」面板按服务器分组列出全部主机与工作区，带已连接 / 未连接徽章，支持增删改查与 `~/.ssh/config` 导入。
+- **远端新建文件夹**：添加 SSH 工作区、浏览远端目录时，可直接在当前列出的层级创建文件夹；创建后自动刷新并高亮新目录，重名/非法名/权限失败都有就地提示。
 - **命令守卫（按主机可选）**：每台主机可配置「禁止命令」（正则 + 命令名，自动解包 `bash -c` / `sudo` / 绝对路径），agent 在 `ssh_exec` / `ssh_cluster` / `bash` 里尝试执行时被拦下并显示你写的提示；也可在编辑服务器的对话框里直接填。默认不拦截。
 - **远端地址显示**：SSH 工作区的「工作区文件」面板、侧边栏工作区行的悬停提示都显示**远端真实路径**（本地锚点目录只是路由占位，不暴露给用户）。
 - **Agent 工具**：`ssh_list` / `ssh_exec` / `ssh_upload` / `ssh_download` / `ssh_tunnel` / `ssh_cluster`，以及远端工作区工具 `remote_status` / `remote_ls` / `remote_search`（远端检索：正则语法、显式预算，以及宿主机没有可用正则引擎时的明确报错；`glob` / `grep` 已能直接查远端，见上文）。
@@ -102,20 +109,24 @@ WorkspaceRecord / WorkspaceProvider / WorkspaceConnection / 能力(capability)
 
 ## 安装
 
-已发布到 npm，但**当前最新的 npm 版本是预发布版 `0.2.6-alpha`**（稳定版仍是 `0.2.5`）；本仓库已经到 **`0.2.10`**（含 dsh 0.2.0/0.2.1、桌面版与 Android 端支持），**尚未发布到 npm**——请用下面的源码方式安装：
+本 fork 独立发布到 npm（包名 `@xiaopb/dsh-hardssh`；npm 包名只能小写）。`v0.2.11` 起由
+GitHub Actions 校验、构建、打包并发布，安装方式：
 
 ```sh
-# 源码链接（推荐：改码后重建 lib/ 并重启 dsh 即生效，无需重新打包）
+# npm（推荐）
+dsh plugin --profile web add @xiaopb/dsh-hardssh
+dsh plugin --profile web add @xiaopb/dsh-hardssh@0.2.11   # 固定版本
+
+# 源码链接（开发用：改码后重建 lib/ 并重启 dsh 即生效）
 dsh plugin --profile web add link:</path/to/dsh-hardssh>/packages/dsh-hardssh
 
-# 或先打包，再安装 tarball
-pnpm --filter @tiphareth/dsh-hardssh pack --pack-destination dist
-dsh plugin --profile web add </path/to/dsh-hardssh>/dist/tiphareth-dsh-hardssh-0.2.10.tgz
-
-# npm 上能装到的（0.2.6-alpha 预发布 / 0.2.5 稳定）；这些版本尚不含 0.2.0 与桌面版适配
-dsh plugin --profile web add @tiphareth/dsh-hardssh@0.2.6-alpha
-dsh plugin --profile web add @tiphareth/dsh-hardssh
+# 或先打包，再安装 tarball（CI 产物同名）
+pnpm --filter @xiaopb/dsh-hardssh pack --pack-destination dist
+dsh plugin --profile web add </path/to/dsh-hardssh>/dist/xiaopb-dsh-hardssh-0.2.11.tgz
 ```
+
+发布产物、SHA-256 与逐条变更说明见
+[GitHub Releases](https://github.com/XiaoPb/dsh-hardssh/releases)。
 
 手工方式：把包加入 profile 的 `dependencies`（`file:...` 指向 tarball）与
 `dsh.profile.bundles` 列表，重启 `dsh` 生效。
@@ -139,7 +150,7 @@ dsh plugin --profile web add @tiphareth/dsh-hardssh
 
 > 已知边界：桌面版自带 dsh 的版本号即应用内置的核心版本（当前 `0.2.0-rc.2`）；插件声明的 peer 区间不设 0.2.x 上限，因此 0.2.x 的后续版本可直接加载。
 
-NPM 包页面：https://www.npmjs.com/package/@tiphareth/dsh-hardssh
+NPM 包页面：https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
 > seam 替换机制见上文「核心优势 1」：它把「内核版本适配」压缩成很薄的一层，但**并不是零**——
 > 插件仍静态依赖 DSH 的公共契约，因此声明了明确的支持区间，见下表。
@@ -148,7 +159,7 @@ NPM 包页面：https://www.npmjs.com/package/@tiphareth/dsh-hardssh
 
 | 插件版本 | 已验证 DSH | Node | 远端主机 |
 |---|---|---|---|
-| `0.2.10`（当前） | **`0.2.0-rc.2`（桌面版 Electron）+ `0.2.1-rc.2`（Android runtime）实测** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（0.1.x 矩阵四条线全绿：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
+| `0.2.11`（当前，fork） | **`0.2.0-rc.2`（桌面版 Electron）+ `0.2.1-rc.2`（Android runtime）实测** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（0.1.x 矩阵四条线全绿：`0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2`） | `^22.19.0 \|\| >=24.0.0` | POSIX（GNU 工具链实测：CentOS/RHEL；BSD/BusyBox 缺 GNU 参数时自动退回 SFTP，功能受限但可用） |
 | `0.2.5` ~ `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1`（同上四条线） | 同上 | 同上 |
 
 > 0.2.0 线的说明：宿主侧（插件激活、路由、工作区注册进官方 `ctx.workspace`）已在 **桌面版 0.2.0-rc.2** 上实测通过；客户端会话跟随已按 0.2.0 的新会话 API（`retainedBy.mainView`）适配。0.1.x 的四条线由 `compat/dsh-*.json` 兼容集与 CI 矩阵保证；**0.2.0 的兼容集尚未加入矩阵**（见 `compat/README.md` 的约定）。
@@ -305,14 +316,60 @@ dsh-hardssh: 已阻止在 login-node 上执行该命令（命中该主机的禁�
 
 ```sh
 pnpm install
-pnpm --filter @tiphareth/dsh-hardssh typecheck   # 类型检查
+pnpm --filter @xiaopb/dsh-hardssh typecheck   # 类型检查
 pnpm test                                        # 测试（默认套件 ~12s；vault 用例已移出）
 pnpm test:vault                                  # 只跑 vault 加密用例（~21s，scrypt 故意慢）
-pnpm --filter @tiphareth/dsh-hardssh build       # 构建（lib/ 产物）
+pnpm --filter @xiaopb/dsh-hardssh build       # 构建（lib/ 产物）
 ```
 
-打包部署：`pnpm --filter @tiphareth/dsh-hardssh pack --pack-destination dist`，
+打包部署：`pnpm --filter @xiaopb/dsh-hardssh pack --pack-destination dist`，
 将 tarball 装入 profile（`pnpm add file:...`）后重启 `dsh web`。
+
+## 发布（Release）
+
+发布由 [`.github/workflows/release.yml`](./.github/workflows/release.yml) 完成：推送 `v*` 语义化 tag
+即触发「校验 → 测试 → 构建 → 打包 → npm 发布 → GitHub Release」。发布说明包含版本信息、提交数量、
+构建环境、tarball 的 SHA-256、按 conventional-commit 分类的变更、贡献者、对比链接，以及
+fork/上游与许可证声明。
+
+### 一次性准备
+
+1. **npm scope**：在 npm 创建/加入 `@xiaopb` scope（包名必须小写），并生成 Automation 或
+   Granular Access Token（对 `@xiaopb` 有 publish 权限）。
+2. **GitHub secret**：仓库 `Settings → Secrets and variables → Actions → New repository secret`，
+   名称 `NPM_TOKEN`。工作流用 `actions/setup-node` 的 `registry-url` 与 `NODE_AUTH_TOKEN` 发布。
+3. **GitHub 仓库 topic**：在仓库首页 About 旁点齿轮，添加 `dsh-plugin`（便于社区检索）；
+   或本机执行 `gh repo edit XiaoPb/dsh-hardssh --add-topic dsh-plugin`。
+4. **Provenance**：工作流已声明 `id-token: write` 并使用 `npm publish --provenance`；
+   公开仓库会生成可验证的 npm provenance 证明。若改为私有仓库，需在 npm 侧关闭 provenance 或调整配置。
+
+### 发布步骤
+
+```sh
+# 1) 同步版本号：根 package.json 与 packages/dsh-hardssh/package.json 必须一致
+#    （工作流会校验 tag 与两者以及 npm 包名）
+# 2) 更新 CHANGELOG.md
+# 3) 提交并打 tag
+git add -A
+git commit -m "chore(release): v0.2.11"
+git tag v0.2.11
+git push origin master --tags
+```
+
+推送后：
+
+- `verify`：`pnpm install --frozen-lockfile` → `typecheck` → `test` → `build` → `npm pack`，
+  校验 tag == 包版本、包名、LICENSE/NOTICE/README 均在 tarball 中；
+- `publish-npm`：只在 tag 触发，发布 tarball 到 npm（`--access public --provenance`；
+  `-alpha`/`-beta`/`-rc` 版本自动使用 `next` dist-tag，正式版用 `latest`）；
+- `release`：生成完整 release notes 并创建 GitHub Release，附加 `.tgz` 与 `SHA256SUMS`。
+
+也支持在 Actions 页面手动 `workflow_dispatch`：默认只跑验证与打包、不发布；
+勾选 `publish` 后按当前 `package.json` 版本发布（不会创建 tag，适合补发 npm 包）。
+
+> 不要手工 `npm publish`：绕过 CI 会缺少 provenance 与 GitHub Release，tarball 也未必包含最新
+> `lib/`。若必须本地发布，先 `pnpm --filter @xiaopb/dsh-hardssh build`，再在包目录执行
+> `npm publish --access public --no-provenance`（`publishConfig.provenance` 需要 CI 的 OIDC）。
 
 ## FAQ
 

@@ -1,6 +1,7 @@
 # dsh-hardssh
 
-[![version](https://img.shields.io/badge/version-0.2.10-4D6BFE)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.2.11-4D6BFE)](CHANGELOG.md)
+[![npm](https://img.shields.io/badge/npm-%40xiaopb%2Fdsh--hardssh-CB3837)](https://www.npmjs.com/package/@xiaopb/dsh-hardssh)
 [![dsh](https://img.shields.io/badge/dsh-0.1.5%20~%200.2.1-7a3ef3)](https://github.com/deepseek-ai/deepseek-harness)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-7a3ef3)](https://github.com/topics/dsh-plugin)
@@ -8,6 +9,13 @@
 **English** · [中文](./README.md)
 
 **SSH workspace + SSH operations plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).** Supports DSH **0.1.5 – 0.2.1**, **including the official Desktop (Electron) app and Android runtime**.
+
+> **Fork notice**: this repository is a modified fork of
+> [tiphareth0/dsh-hardssh](https://github.com/tiphareth0/dsh-hardssh), independently
+> published under the BSD-3-Clause license as `@xiaopb/dsh-hardssh`. Original copyright,
+> modification notes, and the full license are in [LICENSE](./LICENSE) and
+> [NOTICE](./NOTICE). npm package names must be lowercase, so the npm scope for the
+> GitHub account `XiaoPb` is written `@xiaopb`.
 
 Turn any directory on a server into an **SSH workspace**: once bound, file I/O and
 command execution in that session run **transparently on the remote host** — you and
@@ -81,7 +89,7 @@ touch-points for their generic-base equivalents:
 |---|---|
 | direct `node:fs` / `node:child_process` | `ctx.fs` (DSH FileSystem) / `ctx.subprocess` (SubprocessRuntime) |
 | its own path→remote map or "remote mode" flag | `ctx.workspaceCore.findByAnchor()` / `openByAnchor()` |
-| its own workspace handle type | `WorkspaceCore` / `WorkspaceConnection` / `WorkspaceRecord` (`@tiphareth/dsh-hardssh/workspace`) |
+| its own workspace handle type | `WorkspaceCore` / `WorkspaceConnection` / `WorkspaceRecord` (`@xiaopb/dsh-hardssh/workspace`) |
 | its own file/process capability contract | `connection.get('workspace.fs' \| 'workspace.process' \| 'workspace.search')` |
 | its own client-side local/remote global switch | `ctx.sessions.list` (`current` + `byId[id].cwd`) + longest-anchor match over the workspace snapshot |
 
@@ -140,6 +148,9 @@ workspace**; there is no host dropdown:
 - **Host management** — the left-sidebar "SSH workspaces" panel lists every host and
   workspace grouped per server with connected / disconnected badges, plus CRUD and
   `~/.ssh/config` import.
+- **Remote new folder** — while adding an SSH workspace, the remote directory browser can
+  create a folder in the listed level; the listing refreshes, the new row flashes, and
+  duplicate/invalid names or permission failures are reported inline.
 - **Agent tools** — `ssh_list` / `ssh_exec` / `ssh_upload` / `ssh_download` /
   `ssh_tunnel` / `ssh_cluster`, plus the remote workspace tools `remote_status` /
   `remote_ls` / `remote_search`. `glob` / `grep` work remotely too (see the
@@ -160,23 +171,25 @@ workspace**; there is no host dropdown:
 
 ## Install
 
-The package is on npm, but **the newest npm version is the pre-release `0.2.6-alpha`**
-(the stable release is still `0.2.5`). This checkout is **`0.2.10`**, which adds dsh 0.2.0/0.2.1,
-Desktop, and Android support, and is **not published to npm yet** — install it from source:
+This fork is independently published to npm as `@xiaopb/dsh-hardssh` (npm package names
+must be lowercase). Starting with `v0.2.11`, GitHub Actions verifies, builds, packs, and
+publishes every release:
 
 ```sh
-# source link (recommended: rebuild lib/ after edits and restart dsh; no re-packing)
+# npm (recommended)
+dsh plugin --profile web add @xiaopb/dsh-hardssh
+dsh plugin --profile web add @xiaopb/dsh-hardssh@0.2.11   # pinned
+
+# source link (development: rebuild lib/ and restart dsh)
 dsh plugin --profile web add link:</path/to/dsh-hardssh>/packages/dsh-hardssh
 
-# or pack a tarball first
-pnpm --filter @tiphareth/dsh-hardssh pack --pack-destination dist
-dsh plugin --profile web add </path/to/dsh-hardssh>/dist/tiphareth-dsh-hardssh-0.2.10.tgz
-
-# what npm can give you today (0.2.6-alpha pre-release / 0.2.5 stable); without the
-# 0.2.0 / Desktop / Android support added in 0.2.8
-dsh plugin --profile web add @tiphareth/dsh-hardssh@0.2.6-alpha
-dsh plugin --profile web add @tiphareth/dsh-hardssh
+# or pack a tarball first (same name as the CI artifact)
+pnpm --filter @xiaopb/dsh-hardssh pack --pack-destination dist
+dsh plugin --profile web add </path/to/dsh-hardssh>/dist/xiaopb-dsh-hardssh-0.2.11.tgz
 ```
+
+Artifacts, SHA-256 hashes, and per-release notes live in
+[GitHub Releases](https://github.com/XiaoPb/dsh-hardssh/releases).
 
 Alternatively add the package to the profile's `dependencies` (`file:...` → tarball) and
 to `dsh.profile.bundles`, then restart `dsh`.
@@ -218,9 +231,7 @@ rules, so the install path differs:
 > (currently `0.2.0-rc.2`). The declared peer range puts no upper bound on 0.2.x, so
 > later 0.2.x builds load as well.
 
-npm package page: https://www.npmjs.com/package/@tiphareth/dsh-hardssh
-
-npm package page: https://www.npmjs.com/package/@tiphareth/dsh-hardssh
+npm package page: https://www.npmjs.com/package/@xiaopb/dsh-hardssh
 
 > See "Why this plugin 1" for the seam mechanism: it compresses core-version adaptation
 > into a thin layer, but **not to zero** — the plugin still depends statically on public DSH
@@ -230,7 +241,7 @@ npm package page: https://www.npmjs.com/package/@tiphareth/dsh-hardssh
 
 | Plugin | Verified DSH | Node | Remote hosts |
 |---|---|---|---|
-| `0.2.10` (current) | **`0.2.0-rc.2` (Desktop/Electron) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (four 0.1.x matrix lines green: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
+| `0.2.11` (current, fork) | **`0.2.0-rc.2` (Desktop/Electron) + `0.2.1-rc.2` (Android runtime)** + `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (four 0.1.x matrix lines green: `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`) | `^22.19.0 \|\| >=24.0.0` | POSIX (verified with a GNU userland: CentOS/RHEL; BSD/BusyBox hosts without the GNU flags fall back to SFTP — limited but usable) |
 | `0.2.5` – `0.2.7` | `>=0.1.5-rc.1 <0.1.7 \|\| >=0.1.6-alpha.1` (the same four lines) | same | same |
 
 > About the 0.2.0 line: the host half (plugin activation, routes, workspace registration into the official `ctx.workspace`) was verified on the **Desktop app running dsh 0.2.0-rc.2**, and the client session-follow was ported to the 0.2.0 session API (`retainedBy.mainView`). The four 0.1.x lines are covered by the `compat/dsh-*.json` sets and the CI matrix; **a 0.2.0 compat set is not in the matrix yet** (see the rules in `compat/README.md`).
@@ -415,14 +426,49 @@ These files are written with owner-only permissions (0600 / 0700).
 
 ```sh
 pnpm install
-pnpm --filter @tiphareth/dsh-hardssh typecheck   # type check
+pnpm --filter @xiaopb/dsh-hardssh typecheck   # type check
 pnpm test                                        # test suite (~12s; vault cases moved out)
 pnpm test:vault                                  # vault crypto cases only (~21s, scrypt is slow by design)
-pnpm --filter @tiphareth/dsh-hardssh build       # build (lib/ artifacts)
+pnpm --filter @xiaopb/dsh-hardssh build       # build (lib/ artifacts)
 ```
 
-Pack & deploy: `pnpm --filter @tiphareth/dsh-hardssh pack --pack-destination dist`,
+Pack & deploy: `pnpm --filter @xiaopb/dsh-hardssh pack --pack-destination dist`,
 then `pnpm add file:...` into the profile and restart `dsh web`.
+
+## Release
+
+[`.github/workflows/release.yml`](./.github/workflows/release.yml) owns publishing: a
+semantic `v*` tag triggers verify → test → build → pack → npm publish → GitHub Release.
+Release notes include the version, commit count, build environment, tarball SHA-256,
+conventional-commit sections, contributors, the compare link, and fork/upstream plus
+license attribution.
+
+One-time setup:
+
+1. Create/join the `@xiaopb` npm scope (names must be lowercase) and an npm token with
+   publish rights.
+2. Add the token as the repository secret `NPM_TOKEN` (Settings → Secrets and variables
+   → Actions).
+3. Add the `dsh-plugin` repository topic (Settings → About → gear, or
+   `gh repo edit XiaoPb/dsh-hardssh --add-topic dsh-plugin`).
+4. Provenance: the workflow requests `id-token: write` and publishes with
+   `--provenance`; public repositories get a verifiable npm provenance statement.
+
+Release:
+
+```sh
+# keep the root and packages/dsh-hardssh/package.json versions in sync,
+# update CHANGELOG.md, then:
+git add -A
+git commit -m "chore(release): v0.2.11"
+git tag v0.2.11
+git push origin master --tags
+```
+
+A manual `workflow_dispatch` run only verifies and packs by default; tick `publish` to
+publish the current `package.json` version without creating a tag. Do not publish by
+hand: it skips provenance and the GitHub Release, and the tarball may not contain a
+fresh `lib/`.
 
 ## FAQ
 

@@ -54,7 +54,7 @@ jobs:
         run: pnpm test:all
 
       - name: Build
-        run: pnpm --filter @tiphareth/dsh-hardssh build
+        run: pnpm --filter @xiaopb/dsh-hardssh build
 
       - name: Verify publish shape
         working-directory: packages/dsh-hardssh

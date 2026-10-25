@@ -1,6 +1,6 @@
 # Security policy and static-scan rationale
 
-This document states what `@tiphareth/dsh-hardssh` is allowed to do, what it deliberately
+This document states what `@xiaopb/dsh-hardssh` is allowed to do, what it deliberately
 does **not** do, and why the capability-surface items a static scanner reports on this
 repository are expected rather than exploitable.
 

@@ -20,7 +20,7 @@ interface PackageManifest {
   files: string[]
 }
 
-/** Parsed package.json of @tiphareth/dsh-hardssh. */
+/** Parsed package.json of @xiaopb/dsh-hardssh. */
 function manifest(): PackageManifest {
   return JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as PackageManifest
 }

@@ -8,7 +8,7 @@
  * legacy compatibility code — so implementation swaps never leak through this
  * boundary (migration plan Phase 6, §「稳定导出」).
  *
- * @module @tiphareth/dsh-hardssh/workspace
+ * @module @xiaopb/dsh-hardssh/workspace
  */
 
 // Platform-neutral model: records, provider/connection contracts, manifest.

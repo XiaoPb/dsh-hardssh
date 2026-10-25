@@ -1,11 +1,11 @@
 /**
- * @tiphareth/dsh-hardssh/base — the generic workspace base.
+ * @xiaopb/dsh-hardssh/base — the generic workspace base.
  *
  * Provider-agnostic core: workspace model, provider/connection/capability
  * contracts, registry, ledger, namespace codec, router, and the plugin
  * registration API. No SSH, no Cordis, no React.
  *
- * @module @tiphareth/dsh-hardssh/base
+ * @module @xiaopb/dsh-hardssh/base
  */
 
 export * from './model.ts'

@@ -29,7 +29,7 @@ import type { SshApi } from './api.ts'
 import type { SessionSshTargetSource } from './session-target.ts'
 
 /** This implementation's identity in the tab system; also the body/title key. */
-export const OPS_TAB_ID = '@tiphareth/dsh-hardssh/operations'
+export const OPS_TAB_ID = '@xiaopb/dsh-hardssh/operations'
 
 /** The page kind `ctx.sidebarRight.openTab(kind)` names. */
 export const OPS_TAB_KIND = 'hardssh-operations'
