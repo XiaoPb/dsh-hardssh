@@ -274,8 +274,11 @@ export function buildConnectConfig(
   // key. A host whose IdentityFile has not been delivered yet is therefore still
   // reachable through the usual key, instead of failing before the handshake.
   // The explicit passphrase belongs to the configured key only.
-  let keyPath = auth.kind === 'key' && auth.keyPath !== undefined ? expandHome(auth.keyPath) : undefined
-  let keyPassphrase = auth.kind === 'key' ? auth.passphrase : undefined
+  // A keyPath is usable regardless of `kind`: an imported host may carry both
+  // an IdentityFile and a password, and the key must still be tried first. Only
+  // an actually configured key owns the passphrase.
+  let keyPath = auth.keyPath !== undefined && auth.keyPath !== '' ? expandHome(auth.keyPath) : undefined
+  let keyPassphrase = keyPath !== undefined ? auth.passphrase : undefined
   if (keyPath === undefined || keyPath === '' || !existsSync(keyPath)) {
     keyPath = (buildContext.defaultKeyPath ?? findDefaultPrivateKey)()
     keyPassphrase = undefined

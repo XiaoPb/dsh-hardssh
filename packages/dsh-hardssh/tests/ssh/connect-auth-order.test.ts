@@ -93,23 +93,33 @@ describe('buildConnectConfig authentication order', () => {
   it('falls back to the default key when the configured one is missing', () => {
     delete process.env.SSH_AUTH_SOCK
     const configured = join(tempDir(), 'not-delivered-yet')
-    const config = buildConnectConfig(entry({ kind: 'key', keyPath: configured }), OPTIONS)
-    const fallback = defaultPrivateKeyPath()
-    if (fallback === undefined) {
-      // A machine without default keys must fail loudly instead of silently
-      // authenticating as nobody.
-      expect(() => buildConnectConfig(entry({ kind: 'key', keyPath: configured }), OPTIONS)).toThrow()
-      return
-    }
-    expect(config.privateKey).toBeDefined()
+    const fallback = keyFile()
+    // Inject the default-key seam instead of depending on the runner's ~/.ssh:
+    // CI runners have no default key, while developer machines often do.
+    const config = buildConnectConfig(entry({ kind: 'key', keyPath: configured }), OPTIONS, undefined, {
+      defaultKeyPath: () => fallback,
+    })
+    expect(config.privateKey).toContain('OPENSSH PRIVATE KEY')
     expect(config.authHandler).toEqual(['publickey'])
   })
 
   it('does not leak the configured passphrase onto the fallback key', () => {
     delete process.env.SSH_AUTH_SOCK
     const configured = join(tempDir(), 'missing-key')
-    const config = buildConnectConfig(entry({ kind: 'key', keyPath: configured, passphrase: 'secret' }), OPTIONS)
-    if (defaultPrivateKeyPath() !== undefined) expect(config.passphrase).toBeUndefined()
+    const fallback = keyFile()
+    const config = buildConnectConfig(entry({ kind: 'key', keyPath: configured, passphrase: 'secret' }), OPTIONS, undefined, {
+      defaultKeyPath: () => fallback,
+    })
+    expect(config.privateKey).toContain('OPENSSH PRIVATE KEY')
+    expect(config.passphrase).toBeUndefined()
+  })
+
+  it('fails loudly when neither key material nor an agent is available', () => {
+    delete process.env.SSH_AUTH_SOCK
+    const configured = join(tempDir(), 'missing-key')
+    expect(() => buildConnectConfig(entry({ kind: 'key', keyPath: configured }), OPTIONS, undefined, {
+      defaultKeyPath: () => undefined,
+    })).toThrow(/private key not found/)
   })
 
   it('keeps the passphrase for the key it belongs to', () => {
