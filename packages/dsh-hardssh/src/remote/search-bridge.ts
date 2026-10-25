@@ -244,6 +244,8 @@ export class SshSearchBridgeHandle implements SubprocessHandle {
   readonly stdin = undefined
   readonly stdout: PassThrough | undefined
   readonly stderr: PassThrough | undefined
+  /** 0.1.6's separate caller-owned control channel; this bridge has none. */
+  readonly control = undefined
   readonly done: Promise<SubprocessOutcome>
 
   private readonly ownStdoutCollector: SshOutputCollector | undefined

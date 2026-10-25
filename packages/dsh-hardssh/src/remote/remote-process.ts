@@ -45,6 +45,8 @@ export class SshSubprocessHandle implements SubprocessHandle {
   readonly stdin: PassThrough | undefined
   readonly stdout: PassThrough | undefined
   readonly stderr: PassThrough | undefined
+  /** 0.1.6's separate caller-owned control channel; this provider has none. */
+  readonly control = undefined
   readonly collected: SubprocessHandle['collected']
   readonly done: Promise<SubprocessOutcome>
 
